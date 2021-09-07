@@ -4,6 +4,7 @@ from typing import Generator, Iterator, NamedTuple, Optional, Sequence, Tuple, \
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from . import data as e_data
 
@@ -153,12 +154,15 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         data = data.loc[data.neuroticism == neuro_level]
 
         # next, prepare views
+        self._data_views = {}
+
         # first, initial steps
-        self._init_data = data.loc[pd.IndexSlice[:, 1], :]
-        data = data.loc[data.index.difference(self._init_data.index)]
+        # these have a special key (None, None, None)
+        init_data = data.loc[pd.IndexSlice[:, 1], :]
+        self._data_views[(None, None, None)] = init_data
+        data = data.loc[data.index.difference(init_data.index)]
 
         # next, other steps
-        self._data_views = {}
         for imp_dur_trans, df in data.groupby(['prev_impairment',
                                                'prev_duration',
                                                'transition']):
@@ -177,7 +181,8 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def get_initial_step_execution_time(self) -> float:
         # sample from the data and return an execution time in seconds
-        return self._init_data.exec_time.sample(1).values[0]
+        data = self._data_views[(None, None, None)]
+        return data.exec_time.sample(1).values[0]
 
     def _calculate_parameters(self, delay: float) -> _StepParameters:
         try:
@@ -209,6 +214,7 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
     def get_execution_time(self, delay: float) -> float:
         params = self._calculate_parameters(delay)
 
+        # get the appropriate data view
         data = self._data_views[(params.impairment_lvl,
                                  params.duration_lvl,
                                  params.transition)]
@@ -222,8 +228,52 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         return data.exec_time.sample(1).values[0]
 
 
-class _TheoreticalExecutionTimeModel(ExecutionTimeModel):
-    pass
+class _TheoreticalExecutionTimeModel(_EmpiricalExecutionTimeModel):
+    def __init__(self,
+                 data: pd.DataFrame,
+                 neuro_level: int,
+                 impair_binner: Binner,
+                 dur_binner: Binner):
+        super(_TheoreticalExecutionTimeModel, self).__init__(data,
+                                                             neuro_level,
+                                                             impair_binner,
+                                                             dur_binner)
+
+        # at this point, the views have been populated with data according to
+        # the binnings
+        # now we fit distributions to each data view
+
+        self._dists = {}
+        for imp_dur_trans, df in self._data_views.items():
+            # get the execution times, then fit an ExGaussian/ExponNorm
+            # distribution to the samples
+
+            exec_times = df['exec_time'].to_numpy()
+            k, loc, scale = stats.exponnorm.fit(exec_times)
+
+            self._dists[imp_dur_trans] = \
+                stats.exponnorm.freeze(loc=loc, scale=scale, K=k)
+
+    def get_initial_step_execution_time(self) -> float:
+        # find initial distribution
+        dist = self._dists[(None, None, None)]
+        return dist.rvs()
+
+    def get_execution_time(self, delay: float) -> float:
+        params = self._calculate_parameters(delay)
+
+        # get the appropriate distribution
+        dist = self._dists[(params.impairment_lvl,
+                            params.duration_lvl,
+                            params.transition)]
+
+        # update state
+        self._prev_impairment = params.impairment_lvl
+        self._duration = params.raw_duration
+        self._latest_transition = params.transition
+
+        # finally, sample from the dist and return an execution time in seconds
+        return dist.rvs()
 
 
 class ExecutionTimeModelFactory:
