@@ -1,5 +1,6 @@
 import abc
-from typing import Generator, Iterator, Optional, Sequence, Tuple, Union
+from typing import Generator, Iterator, NamedTuple, Optional, Sequence, Tuple, \
+    Union
 
 import numpy as np
 import pandas as pd
@@ -136,6 +137,12 @@ class _ExecTimeIterator(Iterator[float]):
 
 
 class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
+    class _StepParameters(NamedTuple):
+        impairment_lvl: int
+        duration_lvl: int
+        transition: int
+        raw_duration: int
+
     def __init__(self,
                  data: pd.DataFrame,
                  neuro_level: int,
@@ -172,8 +179,7 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         # sample from the data and return an execution time in seconds
         return self._init_data.exec_time.sample(1).values[0]
 
-    def get_execution_time(self, delay: float) -> float:
-        # start by binning delay
+    def _calculate_parameters(self, delay: float) -> _StepParameters:
         try:
             impairment = self._impairment_binner.bin(delay)
         except Binner.BinningError as e:
@@ -181,25 +187,36 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
         if self._prev_impairment is None:
             # previous step was first step
-            self._duration = 1
+            duration = 1
+            transition = self._latest_transition
         elif impairment == self._prev_impairment:
-            self._duration += 1
+            duration = self._duration + 1
+            transition = self._latest_transition
         else:
-            self._duration = 1
-            self._latest_transition = \
-                int(np.sign(impairment - self._prev_impairment))
+            duration = 1
+            transition = int(np.sign(impairment - self._prev_impairment))
 
         try:
-            binned_duration = self._duration_binner.bin(self._duration)
+            binned_duration = self._duration_binner.bin(duration)
         except Binner.BinningError as e:
             raise ModelException() from e
 
-        data = self._data_views[(impairment,
-                                 binned_duration,
-                                 self._latest_transition)]
+        return _EmpiricalExecutionTimeModel._StepParameters(impairment,
+                                                            binned_duration,
+                                                            transition,
+                                                            duration)
 
-        # update stored impairment
-        self._prev_impairment = impairment
+    def get_execution_time(self, delay: float) -> float:
+        params = self._calculate_parameters(delay)
+
+        data = self._data_views[(params.impairment_lvl,
+                                 params.duration_lvl,
+                                 params.transition)]
+
+        # update state
+        self._prev_impairment = params.impairment_lvl
+        self._duration = params.raw_duration
+        self._latest_transition = params.transition
 
         # finally, sample from the data and return an execution time in seconds
         return data.exec_time.sample(1).values[0]
