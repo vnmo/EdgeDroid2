@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import abc
-from typing import Generator, Iterator, NamedTuple, Optional, Sequence, Tuple, \
-    Union
+from typing import Generator, Iterator, NamedTuple, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,18 @@ from . import data as e_data
 # TODO: pydocs
 
 class Binner:
+    """
+    Utility class for binning values into bins defined by an array of bin edges.
+    Values will be binned into the bins defined by these such that `i` will
+    be indicated as the bin for a `value` iff `value in [bin_edges[i],
+    bin_edges[i + i])`
+
+    Parameters
+    ----------
+    bin_edges
+        A Sequence defining the bin edges.
+
+    """
     class BinningError(Exception):
         def __init__(self, val: Union[float, int],
                      bin_edges: np.ndarray):
@@ -21,13 +34,43 @@ class Binner:
             )
 
     def __init__(self, bin_edges: Sequence[Union[float, int]]):
-        self._bin_edges = np.array(bin_edges)
+        self._bin_edges = np.unique(bin_edges)
 
     def bin(self, value: Union[int, float]) -> int:
+        """
+        Bin a value into the bin edges stored in this binner.
+
+        Values will be binned into the bin edges such that `i` will be
+        indicated as the bin for a `value` iff `value in [bin_edges[i],
+        bin_edges[i + i])`
+
+        Parameters
+        ----------
+        value
+            The value to bin.
+
+        Returns
+        -------
+        int
+            An index `i` such that `value in [bin_edges[i], bin_edges[i + i])`
+
+        Raises
+        ------
+        Binner.BinningError
+            If `value` is less than `bin_edges[0]` or greater than
+            `bin_edges[-1]`.
+        """
         bin_idx = int(np.digitize(value, self._bin_edges))
         if bin_idx <= 0 or bin_idx >= self._bin_edges.size:
             raise Binner.BinningError(value, self._bin_edges)
         return bin_idx - 1
+
+
+class _PreprocessedData(NamedTuple):
+    data: pd.DataFrame
+    neuroticism_binner: Binner
+    impairment_binner: Binner
+    duration_binner: Binner
 
 
 def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
@@ -35,7 +78,7 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
                     e_data.default_impairment_bins,
                     duration_bins: np.ndarray = e_data.default_duration_bins,
                     execution_time_data: Optional[pd.DataFrame] = None) \
-        -> Tuple[pd.DataFrame, Binner, Binner, Binner]:
+        -> _PreprocessedData:
     data = execution_time_data if execution_time_data is not None \
         else e_data.load_default_exec_time_data()
 
@@ -83,10 +126,10 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
     data['prev_impairment'] = data['prev_impairment'] \
         .astype('category').cat.codes
 
-    return data, \
-           Binner(bin_edges=neuroticism_bins), \
-           Binner(bin_edges=impairment_bins), \
-           Binner(bin_edges=duration_bins)
+    return _PreprocessedData(data,
+                             Binner(bin_edges=neuroticism_bins),
+                             Binner(bin_edges=impairment_bins),
+                             Binner(bin_edges=duration_bins))
 
 
 class ModelException(Exception):
@@ -103,6 +146,10 @@ class ExecutionTimeModel(abc.ABC):
 
     @abc.abstractmethod
     def get_execution_time(self, delay: float) -> float:
+        pass
+
+    @abc.abstractmethod
+    def execution_time_iterator(self) -> _ExecTimeIterator:
         pass
 
 
@@ -282,7 +329,7 @@ class ExecutionTimeModelFactory:
                  impairment_bins: np.ndarray = e_data.default_impairment_bins,
                  duration_bins: np.ndarray = e_data.default_duration_bins,
                  execution_time_data: Optional[pd.DataFrame] = None):
-        self._data = preprocess_data(
+        self._preprocessed_data = preprocess_data(
             neuroticism_bins=neuroticism_bins,
             impairment_bins=impairment_bins,
             duration_bins=duration_bins,
@@ -292,4 +339,20 @@ class ExecutionTimeModelFactory:
     def make_model(self,
                    neuroticism: float,
                    empirical: bool = False) -> ExecutionTimeModel:
-        pass
+        neuro_level = self._preprocessed_data \
+            .neuroticism_binner.bin(neuroticism)
+
+        if empirical:
+            return _EmpiricalExecutionTimeModel(
+                self._preprocessed_data.data,
+                neuro_level,
+                self._preprocessed_data.impairment_binner,
+                self._preprocessed_data.duration_binner
+            )
+        else:
+            return _TheoreticalExecutionTimeModel(
+                self._preprocessed_data.data,
+                neuro_level,
+                self._preprocessed_data.impairment_binner,
+                self._preprocessed_data.duration_binner
+            )
