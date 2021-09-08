@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from typing import Generator, Iterator, NamedTuple, Optional, Sequence, \
-    Union, Tuple
+    Union
 
 import numpy as np
 import pandas as pd
@@ -26,6 +26,7 @@ class Binner:
         A Sequence defining the bin edges.
 
     """
+
     class BinningError(Exception):
         def __init__(self, val: Union[float, int],
                      bin_edges: np.ndarray):
@@ -81,8 +82,9 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
                     execution_time_data: Optional[pd.DataFrame] = None) \
         -> PreprocessedData:
     """
-    Preprocess a DataFrame with index `run_id` and columns `exec_time`,
-    `neuroticism`, and `delay` into a DataFrame appropriate for the model.
+    Preprocess a DataFrame with index (`run_id`, `step_seq`) and columns
+    `exec_time`, `neuroticism`, and `delay` into a DataFrame appropriate for
+    the model.
 
     Assumes the DataFrame rows are ORDERED.
 
@@ -181,14 +183,50 @@ class ExecutionTimeModel(abc.ABC):
 
     @abc.abstractmethod
     def get_initial_step_execution_time(self) -> float:
+        """
+        Obtain an execution time for the first step in a task.
+
+        Returns
+        -------
+        float
+            An execution time value in seconds.
+        """
         pass
 
     @abc.abstractmethod
     def get_execution_time(self, delay: float) -> float:
+        """
+        Obtain an execution time for a step N, N > 1.
+
+        Parameters
+        ----------
+        delay
+            Current measured delay in the system, in seconds.
+
+        Returns
+        -------
+        float
+            An execution time value in seconds.
+        """
         pass
 
     @abc.abstractmethod
     def execution_time_iterator(self) -> _ExecTimeIterator:
+        """
+        Utility method to obtain an iterator of execution times to use in a
+        loop. Example use case, where `model` corresponds to an
+        `ExecutionTimeModel` object::
+
+            for exec_time in (model_iter := model.execution_time_iterator()):
+                # do stuff
+                # update delay before next iteration
+                model_iter.set_delay(delay)
+
+        Returns
+        -------
+        _ExecTimeIterator
+            An iterator for execution times.
+        """
         pass
 
 
@@ -242,7 +280,7 @@ class _ExecTimeIterator(Iterator[float]):
 
     def next(self, delay: Optional[Union[int, float]]) -> float:
         """
-        Utility function which calls set_delay() before advacing the iteration.
+        Utility function which calls set_delay() before advancing the iteration.
 
         Parameters
         ----------
@@ -260,6 +298,11 @@ class _ExecTimeIterator(Iterator[float]):
 
 
 class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
+    """
+    Implementation of an execution time model which returns execution times
+    sampled from the empirical distributions of the underlying data.
+    """
+
     class _StepParameters(NamedTuple):
         impairment_lvl: int
         duration_lvl: int
@@ -271,6 +314,23 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
                  neuro_level: int,
                  impair_binner: Binner,
                  dur_binner: Binner):
+        """
+        Parameters
+        ----------
+        data
+            A DataFrame indexed with pairs of (run/subject id, step sequence
+            number) and with columns `prev_impairment`, `prev_duration`,
+            and `transition`. Such as DataFrame can be obtained from the
+            preprocess_data() function.
+        neuro_level
+            An integer corresponding to the binned level of neuroticism for
+            this model.
+        impair_binner
+            A Binner object to bin delays into impairment levels.
+        dur_binner
+            A Binner object to bin duration values.
+        """
+
         super().__init__()
         # first, we filter on neuroticism
         data = data.loc[data.neuroticism == neuro_level]
@@ -351,11 +411,38 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
 
 class _TheoreticalExecutionTimeModel(_EmpiricalExecutionTimeModel):
+    """
+    Implementation of an execution time model which returns execution times
+    sampled from theoretical distributions fitted to the underlying data.
+    """
+
     def __init__(self,
                  data: pd.DataFrame,
                  neuro_level: int,
                  impair_binner: Binner,
-                 dur_binner: Binner):
+                 dur_binner: Binner,
+                 distribution: stats.rv_continuous = stats.exponnorm):
+        """
+        Parameters
+        ----------
+        data
+            A DataFrame indexed with pairs of (run/subject id, step sequence
+            number) and with columns `prev_impairment`, `prev_duration`,
+            and `transition`. Such as DataFrame can be obtained from the
+            preprocess_data() function.
+        neuro_level
+            An integer corresponding to the binned level of neuroticism for
+            this model.
+        impair_binner
+            A Binner object to bin delays into impairment levels.
+        dur_binner
+            A Binner object to bin duration values.
+        distribution
+            An scipy.stats.rv_continuous object corresponding to the
+            distribution to fit to the empirical data. By default it
+            corresponds to the Exponentially Modified Gaussian.
+        """
+
         super(_TheoreticalExecutionTimeModel, self).__init__(data,
                                                              neuro_level,
                                                              impair_binner,
@@ -367,14 +454,13 @@ class _TheoreticalExecutionTimeModel(_EmpiricalExecutionTimeModel):
 
         self._dists = {}
         for imp_dur_trans, df in self._data_views.items():
-            # get the execution times, then fit an ExGaussian/ExponNorm
-            # distribution to the samples
+            # get the execution times, then fit the distribution to the samples
 
             exec_times = df['exec_time'].to_numpy()
-            k, loc, scale = stats.exponnorm.fit(exec_times)
+            k, loc, scale = distribution.fit(exec_times)
 
             self._dists[imp_dur_trans] = \
-                stats.exponnorm.freeze(loc=loc, scale=scale, K=k)
+                distribution.freeze(loc=loc, scale=scale, K=k)
 
     def get_initial_step_execution_time(self) -> float:
         # find initial distribution
@@ -399,6 +485,7 @@ class _TheoreticalExecutionTimeModel(_EmpiricalExecutionTimeModel):
 
 
 class ExecutionTimeModelFactory:
+    # TODO: finish
     def __init__(self,
                  neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
                  impairment_bins: np.ndarray = e_data.default_impairment_bins,
