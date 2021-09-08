@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import abc
-from typing import Generator, Iterator, NamedTuple, Optional, Sequence, Union
+from typing import Generator, Iterator, NamedTuple, Optional, Sequence, \
+    Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -66,7 +67,7 @@ class Binner:
         return bin_idx - 1
 
 
-class _PreprocessedData(NamedTuple):
+class PreprocessedData(NamedTuple):
     data: pd.DataFrame
     neuroticism_binner: Binner
     impairment_binner: Binner
@@ -78,8 +79,33 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
                     e_data.default_impairment_bins,
                     duration_bins: np.ndarray = e_data.default_duration_bins,
                     execution_time_data: Optional[pd.DataFrame] = None) \
-        -> _PreprocessedData:
-    data = execution_time_data if execution_time_data is not None \
+        -> PreprocessedData:
+    """
+    Preprocess a DataFrame with index `run_id` and columns `exec_time`,
+    `neuroticism`, and `delay` into a DataFrame appropriate for the model.
+
+    Assumes the DataFrame rows are ORDERED.
+
+    Any parameter not explicitly provided will be taken from the model defaults.
+
+    Parameters
+    ----------
+    neuroticism_bins
+        The bin edges for binning raw neuroticism values.
+    impairment_bins
+        The bin edges for binning raw delay values into levels.
+    duration_bins
+        The bin edges for binning duration values into levels.
+    execution_time_data
+        The DataFrame to be processed.
+
+    Returns
+    -------
+    PreprocessedData
+        The preprocessed data along with suitable Binner objects for values.
+    """
+
+    data = execution_time_data.copy() if execution_time_data is not None \
         else e_data.load_default_exec_time_data()
 
     # prepare the data
@@ -92,17 +118,25 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
     # data = data.reset_index()
 
     for _, df in data.groupby('run_id'):
+        # grouping by subject, basically
+
+        # bin delay
         impairment = pd.cut(df['delay'], impairment_bins)
+
+        # mark transitions as points were impairment changes
         df['transition'] = impairment \
             .cat.codes.diff(1) \
             .replace(np.nan, 0) \
             .astype(int)
 
+        # group by contiguous segments of steps
         df['chunk'] = df['transition'].abs().ne(0).cumsum()
         for _, chunk in df.groupby('chunk'):
+            # add a duration count, this requires rows to be ordered
             df.loc[chunk.index, 'duration'] = \
                 np.arange(len(chunk.index)) + 1
 
+            # mark each row with the MOST RECENT transition value.
             transition = chunk['transition'].iloc[0]
             if transition != 0:
                 df.loc[chunk.index, 'transition'] = transition
@@ -113,6 +147,7 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
         data.loc[df.index, 'prev_duration'] = df['duration'].shift()
         data.loc[df.index, 'transition'] = df['transition'].shift()
 
+    # transition is either up or down in impairment
     data['transition'] = np.sign(data['transition'])
     data['transition'] = data['transition'] \
         .fillna(0) \
@@ -126,19 +161,23 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
     data['prev_impairment'] = data['prev_impairment'] \
         .astype('category').cat.codes
 
-    return _PreprocessedData(data,
-                             Binner(bin_edges=neuroticism_bins),
-                             Binner(bin_edges=impairment_bins),
-                             Binner(bin_edges=duration_bins))
+    return PreprocessedData(data,
+                            Binner(bin_edges=neuroticism_bins),
+                            Binner(bin_edges=impairment_bins),
+                            Binner(bin_edges=duration_bins))
 
 
 class ModelException(Exception):
+    """
+    Exception raised during model execution.
+    """
     pass
 
 
 class ExecutionTimeModel(abc.ABC):
-    def __init__(self):
-        pass
+    """
+    Defines the general interface for execution time models.
+    """
 
     @abc.abstractmethod
     def get_initial_step_execution_time(self) -> float:
@@ -154,6 +193,18 @@ class ExecutionTimeModel(abc.ABC):
 
 
 class _ExecTimeIterator(Iterator[float]):
+    """
+    Utility class for iterating through execution times in a loop.
+
+    Use case, if `model` corresponds to an `ExecutionTimeModel` object::
+
+        for exec_time in (model_iter := model.execution_time_iterator()):
+            # do stuff
+            # update delay before next iteration
+            model_iter.set_delay(delay)
+
+    """
+
     def __init__(self, model: ExecutionTimeModel):
         self._delay = None
 
@@ -174,12 +225,36 @@ class _ExecTimeIterator(Iterator[float]):
         self._gen = _generator()
 
     def set_delay(self, value: Union[int, float]) -> None:
+        """
+        Set the current delay. Must be called before every iteration of this
+        iterator except the first one.
+
+        Parameters
+        ----------
+        value : float
+            Current delay in seconds.
+
+        """
         self._delay = float(value)
 
     def __next__(self) -> float:
         return next(self._gen)
 
     def next(self, delay: Optional[Union[int, float]]) -> float:
+        """
+        Utility function which calls set_delay() before advacing the iteration.
+
+        Parameters
+        ----------
+        delay : float
+            Current delay in seconds.
+
+        Returns
+        -------
+        float
+            A value corresponding to the next execution time generated by the
+            model.
+        """
         self.set_delay(delay)
         return self.__next__()
 
