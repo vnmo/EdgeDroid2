@@ -4,11 +4,15 @@ import abc
 from typing import Generator, Iterator, NamedTuple, Optional, Sequence, \
     Tuple, Union
 
+import nptyping as npt
 import numpy as np
 import pandas as pd
 from scipy import stats
 
 from . import data as e_data
+
+_NUM = Union[float, int]
+_ARRAY_LIKE = Union[_NUM, npt.NDArray, Sequence]
 
 
 # TODO: pydocs
@@ -17,8 +21,8 @@ class Binner:
     """
     Utility class for binning values into bins defined by an array of bin edges.
     Values will be binned into the bins defined by these such that `i` will
-    be indicated as the bin for a `value` iff `value in [bin_edges[i],
-    bin_edges[i + i])`
+    be indicated as the bin for a `value` iff `value in (bin_edges[i],
+    bin_edges[i + i]]`
 
     Parameters
     ----------
@@ -28,19 +32,20 @@ class Binner:
     """
 
     class BinningError(Exception):
-        def __init__(self, val: Union[float, int],
+        def __init__(self, val: _ARRAY_LIKE,
                      bin_edges: np.ndarray):
-            b_edges = ', '.join([str(i) for i in bin_edges])
             super(Binner.BinningError, self).__init__(
-                f'{val} does not fall within the defined bin edges [{b_edges})!'
+                f'{val} do(es) not fall within the defined bin edges '
+                f'{bin_edges}'
             )
 
     def __init__(self, bin_edges: Sequence[Union[float, int]]):
         self._bin_edges = np.unique(bin_edges)
 
-    def bin(self, value: Union[int, float]) -> int:
+    def bin(self, value: _ARRAY_LIKE) -> _ARRAY_LIKE:
         """
-        Bin a value into the bin edges stored in this binner.
+        Bin a value or a series of values into the bin edges stored in this
+        binner.
 
         Values will be binned into the bin edges such that `i` will be
         indicated as the bin for a `value` iff `value in [bin_edges[i],
@@ -49,11 +54,11 @@ class Binner:
         Parameters
         ----------
         value
-            The value to bin.
+            The value(s) to bin.
 
         Returns
         -------
-        int
+        _ArrayLike
             An index `i` such that `value in [bin_edges[i], bin_edges[i + i])`
 
         Raises
@@ -62,10 +67,15 @@ class Binner:
             If `value` is less than `bin_edges[0]` or greater than
             `bin_edges[-1]`.
         """
-        bin_idx = int(np.digitize(value, self._bin_edges))
-        if bin_idx <= 0 or bin_idx >= self._bin_edges.size:
+
+        arr_value = np.atleast_1d(value)
+        bin_indices = pd.cut(arr_value, self._bin_edges).codes
+        if np.any(np.isnan(bin_indices)) \
+                or np.any(bin_indices < 0) \
+                or np.any(bin_indices >= self._bin_edges.size):
             raise Binner.BinningError(value, self._bin_edges)
-        return bin_idx - 1
+
+        return bin_indices[0] if np.ndim(value) == 0 else bin_indices
 
 
 class PreprocessedData(NamedTuple):
@@ -77,7 +87,6 @@ class PreprocessedData(NamedTuple):
 
 def _calculate_impairment_chunks(impairment: pd.Series) \
         -> Tuple[np.ndarray, np.ndarray]:
-
     df = pd.DataFrame(index=impairment.index)
     df['duration'] = np.nan
 
@@ -492,7 +501,7 @@ class _TheoreticalExecutionTimeModel(_EmpiricalExecutionTimeModel):
 
 
 class ExecutionTimeModelFactory:
-    # TODO: finish
+    # TODO: document
     def __init__(self,
                  neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
                  impairment_bins: np.ndarray = e_data.default_impairment_bins,

@@ -4,8 +4,10 @@ from unittest import TestCase
 import numpy as np
 import pandas as pd
 
-from edgedroid.execution_times import Binner, _calculate_impairment_chunks, \
-    preprocess_data
+from edgedroid.data import load_default_exec_time_data
+from edgedroid.execution_times import Binner, ExecutionTimeModelFactory, \
+    _EmpiricalExecutionTimeModel, _TheoreticalExecutionTimeModel, \
+    _calculate_impairment_chunks, preprocess_data
 
 
 class TestDataPreprocessing(TestCase):
@@ -123,12 +125,44 @@ class TestDataPreprocessing(TestCase):
             binner.bin(4)
 
         with self.assertRaises(Binner.BinningError):
-            # ranges are right-exclusive
-            binner.bin(3)
+            # ranges are left-exclusive
+            binner.bin(1)
 
         self.assertEqual(binner.bin(1.5), 0)
         self.assertEqual(binner.bin(2.7), 1)
-        self.assertEqual(binner.bin(1), 0)
-        self.assertEqual(binner.bin(2), 1)
+        self.assertEqual(binner.bin(2), 0)
+        self.assertEqual(binner.bin(3), 1)
 
+        # now with some arrays
+        with self.assertRaises(Binner.BinningError):
+            binner.bin(np.linspace(start=0, stop=1, num=50))
 
+        with self.assertRaises(Binner.BinningError):
+            binner.bin(np.linspace(start=3.1, stop=10, num=50))
+
+        np.testing.assert_array_equal(
+            binner.bin([1.5, 2.5, 3]),
+            [0, 1, 1]
+        )
+
+    def test_model_factory(self) -> None:
+        factory = ExecutionTimeModelFactory()
+
+        emp_model = factory.make_model(neuroticism=0.5, empirical=True)
+        theo_model = factory.make_model(neuroticism=0.5, empirical=False)
+
+        self.assertIsInstance(emp_model, _EmpiricalExecutionTimeModel)
+        self.assertIsInstance(theo_model, _TheoreticalExecutionTimeModel)
+
+    def test_empirical_model(self) -> None:
+        rand_gen = np.random.default_rng()
+
+        # a single bin for all neuroticism to simplify stuff
+        neuro_bins = np.array([-np.inf, np.inf])
+
+        # we use the default data, but select a single subject
+        data = load_default_exec_time_data()
+        run_id = rand_gen.choice(data.reset_index()['run_id'].unique())
+
+        data = data.xs(run_id, drop_level=False)
+        neuro = data.neuroticism.values[0]
