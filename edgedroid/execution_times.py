@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from typing import Generator, Iterator, NamedTuple, Optional, Sequence, \
-    Union
+    Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -75,6 +75,38 @@ class PreprocessedData(NamedTuple):
     duration_binner: Binner
 
 
+def _calculate_impairment_chunks(impairment: pd.Series) \
+        -> Tuple[np.ndarray, np.ndarray]:
+
+    df = pd.DataFrame(index=impairment.index)
+    df['duration'] = np.nan
+
+    # mark transitions as points were impairment changes
+    df['transition'] = impairment \
+        .cat.codes.diff(1) \
+        .replace(np.nan, 0) \
+        .astype(int)
+
+    # group by contiguous segments of steps
+    df['chunk'] = df['transition'].abs().ne(0).cumsum()
+    for _, chunk in df.groupby('chunk'):
+        # add a duration count, this requires rows to be ordered
+        df.loc[chunk.index, 'duration'] = np.arange(len(chunk.index)) + 1
+
+        # mark each row with the MOST RECENT transition value.
+        transition = chunk['transition'].iloc[0]
+        if transition != 0:
+            df.loc[chunk.index, 'transition'] = transition
+        else:
+            df.loc[chunk.index, 'transition'] = np.nan
+
+    # mark transitions as 1 (low to high), -1 (high to low) or 0 (NA)
+    # also shift because it's the latest transition
+    df['transition'] = np.sign(df['transition'].shift()).fillna(0).astype('int')
+
+    return df['transition'].to_numpy(), df['duration'].shift().to_numpy()
+
+
 def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
                     impairment_bins: np.ndarray =
                     e_data.default_impairment_bins,
@@ -114,48 +146,20 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
     # data['impairment'] = None
     data['prev_impairment'] = None
     data['prev_duration'] = 0
-    data['transition'] = np.nan
+    data['transition'] = 0
 
     data['neuroticism'] = pd.cut(data['neuroticism'], neuroticism_bins)
     # data = data.reset_index()
 
     for _, df in data.groupby('run_id'):
         # grouping by subject, basically
-
         # bin delay
         impairment = pd.cut(df['delay'], impairment_bins)
-
-        # mark transitions as points were impairment changes
-        df['transition'] = impairment \
-            .cat.codes.diff(1) \
-            .replace(np.nan, 0) \
-            .astype(int)
-
-        # group by contiguous segments of steps
-        df['chunk'] = df['transition'].abs().ne(0).cumsum()
-        for _, chunk in df.groupby('chunk'):
-            # add a duration count, this requires rows to be ordered
-            df.loc[chunk.index, 'duration'] = \
-                np.arange(len(chunk.index)) + 1
-
-            # mark each row with the MOST RECENT transition value.
-            transition = chunk['transition'].iloc[0]
-            if transition != 0:
-                df.loc[chunk.index, 'transition'] = transition
-            else:
-                df.loc[chunk.index, 'transition'] = np.nan
+        prev_trans, prev_dur = _calculate_impairment_chunks(impairment)
 
         data.loc[df.index, 'prev_impairment'] = impairment.shift()
-        data.loc[df.index, 'prev_duration'] = df['duration'].shift()
-        data.loc[df.index, 'transition'] = df['transition'].shift()
-
-    # transition is either up or down in impairment
-    data['transition'] = np.sign(data['transition'])
-    data['transition'] = data['transition'] \
-        .fillna(0) \
-        .astype('int') \
-        .astype('category')
-    # .rename_categories(['h2l', 'l2h'])
+        data.loc[df.index, 'prev_duration'] = prev_dur
+        data.loc[df.index, 'transition'] = prev_trans
 
     data['prev_duration'] = pd.cut(data['prev_duration'],
                                    bins=duration_bins).cat.codes
@@ -163,7 +167,10 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
     data['prev_impairment'] = data['prev_impairment'] \
         .astype('category').cat.codes
 
-    return PreprocessedData(data,
+    output_cols = ['exec_time',
+                   'neuroticism', 'prev_impairment',
+                   'prev_duration', 'transition']
+    return PreprocessedData(data[output_cols].copy(),
                             Binner(bin_edges=neuroticism_bins),
                             Binner(bin_edges=impairment_bins),
                             Binner(bin_edges=duration_bins))
