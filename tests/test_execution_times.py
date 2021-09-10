@@ -6,7 +6,8 @@ import pandas as pd
 
 from edgedroid.data import load_default_exec_time_data
 from edgedroid.execution_times import Binner, ExecutionTimeModelFactory, \
-    _EmpiricalExecutionTimeModel, _TheoreticalExecutionTimeModel, \
+    ModelException, _EmpiricalExecutionTimeModel, \
+    _TheoreticalExecutionTimeModel, \
     _calculate_impairment_chunks, preprocess_data
 
 
@@ -154,15 +155,73 @@ class TestDataPreprocessing(TestCase):
         self.assertIsInstance(emp_model, _EmpiricalExecutionTimeModel)
         self.assertIsInstance(theo_model, _TheoreticalExecutionTimeModel)
 
+    def test_model_iterator(self) -> None:
+        # tests for the model iterator util
+        data = preprocess_data()
+
+        for model_cls in (_EmpiricalExecutionTimeModel,
+                          _TheoreticalExecutionTimeModel):
+            model = model_cls(
+                data=data.data.copy(),
+                neuro_level=0,
+                impair_binner=data.impairment_binner,
+                dur_binner=data.duration_binner
+            )
+
+            it = model.execution_time_iterator()
+            value = next(it)
+            self.assertIsInstance(value, (float, int))
+            with self.assertRaises(ModelException):
+                next(it)  # exception should be raised here, on the second call
+
+            # if we call set_delay() between iterations, no problem
+            it.set_delay(5)
+            for i, _ in enumerate(it):
+                if i > 10:
+                    break
+                it.set_delay(10)
+
     def test_empirical_model(self) -> None:
-        rand_gen = np.random.default_rng()
+        rng = np.random.default_rng()
 
-        # a single bin for all neuroticism to simplify stuff
-        neuro_bins = np.array([-np.inf, np.inf])
+        # we use the default data to test
+        raw_data = load_default_exec_time_data()
+        proc_data = preprocess_data(execution_time_data=raw_data)
+        model_data = proc_data.data
 
-        # we use the default data, but select a single subject
-        data = load_default_exec_time_data()
-        run_id = rand_gen.choice(data.reset_index()['run_id'].unique())
+        # run tests with three different, random subjects
+        run_ids = model_data.index.get_level_values(0)
+        run_ids = rng.choice(run_ids, size=3)
 
-        data = data.xs(run_id, drop_level=False)
-        neuro = data.neuroticism.values[0]
+        # run tests for each subject (run_id)
+        for run_id in run_ids:
+            run_raw_data = raw_data.xs(run_id, drop_level=False).copy()
+            run_model_data = model_data.xs(run_id, drop_level=False).copy()
+
+            # create a model matching the selected run_id
+            neuro = run_raw_data.neuroticism.iloc[0]
+            neuro_level = proc_data.neuroticism_binner.bin(neuro)
+
+            model = _EmpiricalExecutionTimeModel(
+                data=run_model_data,  # use only data from this participant
+                neuro_level=neuro_level,
+                impair_binner=proc_data.impairment_binner,
+                dur_binner=proc_data.duration_binner
+            )
+
+            # generate an execution time for each step of the original run,
+            # then compare obtained distributions for similarity
+            model_iter = model.execution_time_iterator()
+            model_etimes = np.empty(shape=len(run_raw_data.index))
+
+            for i, (row, exec_time) in \
+                    enumerate(zip(run_raw_data.itertuples(name='Step'),
+                                  model_iter)):
+                # outputs of empirical model should all be in the original data
+                self.assertTrue(np.any(np.isclose(exec_time,
+                                                  run_raw_data.exec_time)))
+
+                model_etimes[i] = exec_time
+                model_iter.set_delay(row.delay)
+
+                # TODO: more complex test?

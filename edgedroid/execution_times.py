@@ -227,7 +227,7 @@ class ExecutionTimeModel(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def execution_time_iterator(self) -> _ExecTimeIterator:
+    def execution_time_iterator(self) -> ExecTimeIterator:
         """
         Utility method to obtain an iterator of execution times to use in a
         loop. Example use case, where `model` corresponds to an
@@ -240,13 +240,13 @@ class ExecutionTimeModel(abc.ABC):
 
         Returns
         -------
-        _ExecTimeIterator
+        ExecTimeIterator
             An iterator for execution times.
         """
         pass
 
 
-class _ExecTimeIterator(Iterator[float]):
+class ExecTimeIterator(Iterator[float]):
     """
     Utility class for iterating through execution times in a loop.
 
@@ -268,13 +268,7 @@ class _ExecTimeIterator(Iterator[float]):
 
             # subsequent calls return values from non-initial steps
             while True:
-                if self._delay is None:
-                    raise ModelException('Must call set_delay() between '
-                                         'iterations of the execution '
-                                         'time generator!')
-
-                yield model.get_execution_time(self._delay)
-                self._delay = None
+                yield model.get_execution_time(self._get_delay())
 
         self._gen = _generator()
 
@@ -290,6 +284,17 @@ class _ExecTimeIterator(Iterator[float]):
 
         """
         self._delay = float(value)
+
+    def _get_delay(self) -> float:
+        try:
+            if self._delay is None:
+                raise ModelException('Must call set_delay() between '
+                                     'iterations of the execution '
+                                     'time generator!')
+
+            return self._delay
+        finally:
+            self._delay = None
 
     def __next__(self) -> float:
         return next(self._gen)
@@ -374,8 +379,8 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._duration = 0
         self._latest_transition = 0
 
-    def execution_time_iterator(self) -> Iterator[float]:
-        return _ExecTimeIterator(model=self)
+    def execution_time_iterator(self) -> ExecTimeIterator[float]:
+        return ExecTimeIterator(model=self)
 
     def get_initial_step_execution_time(self) -> float:
         # sample from the data and return an execution time in seconds
