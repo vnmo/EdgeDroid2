@@ -1,4 +1,5 @@
 from collections import deque
+from typing import Any, Generator, Tuple
 from unittest import TestCase
 
 import numpy as np
@@ -146,6 +147,16 @@ class TestDataPreprocessing(TestCase):
             [0, 1, 1]
         )
 
+
+class TestModels(TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.rng = np.random.default_rng()
+
+        raw_data = load_default_exec_time_data()
+        cls.proc_data = preprocess_data(execution_time_data=raw_data)
+        cls.raw_data = raw_data
+
     def test_model_factory(self) -> None:
         factory = ExecutionTimeModelFactory()
 
@@ -157,15 +168,15 @@ class TestDataPreprocessing(TestCase):
 
     def test_model_iterator(self) -> None:
         # tests for the model iterator util
-        data = preprocess_data()
+        # data = preprocess_data()
 
         for model_cls in (_EmpiricalExecutionTimeModel,
                           _TheoreticalExecutionTimeModel):
             model = model_cls(
-                data=data.data.copy(),
+                data=self.proc_data.data.copy(),
                 neuro_level=0,
-                impair_binner=data.impairment_binner,
-                dur_binner=data.duration_binner
+                impair_binner=self.proc_data.impairment_binner,
+                dur_binner=self.proc_data.duration_binner
             )
 
             it = model.execution_time_iterator()
@@ -181,32 +192,48 @@ class TestDataPreprocessing(TestCase):
                     break
                 it.set_delay(10)
 
-    def test_empirical_model(self) -> None:
-        rng = np.random.default_rng()
-
-        # we use the default data to test
-        raw_data = load_default_exec_time_data()
-        proc_data = preprocess_data(execution_time_data=raw_data)
-        model_data = proc_data.data
+    def _model_test_generator(self) \
+            -> Generator[Tuple[Any, pd.DataFrame, pd.DataFrame], None, None]:
+        model_data = self.proc_data.data
 
         # run tests with three different, random subjects
         run_ids = model_data.index.get_level_values(0)
-        run_ids = rng.choice(run_ids, size=3)
+        run_ids = self.rng.choice(run_ids, size=3)
 
         # run tests for each subject (run_id)
         for run_id in run_ids:
-            run_raw_data = raw_data.xs(run_id, drop_level=False).copy()
+            run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
             run_model_data = model_data.xs(run_id, drop_level=False).copy()
 
+            yield run_id, run_raw_data, run_model_data
+
+    def test_empirical_model(self) -> None:
+        # we use the default data to test
+        # raw_data = load_default_exec_time_data()
+        # proc_data = preprocess_data(execution_time_data=raw_data)
+
+        # model_data = self.proc_data.data
+        #
+        # # run tests with three different, random subjects
+        # run_ids = model_data.index.get_level_values(0)
+        # run_ids = self.rng.choice(run_ids, size=3)
+        #
+        # # run tests for each subject (run_id)
+        # for run_id in run_ids:
+        #     run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
+        #     run_model_data = model_data.xs(run_id, drop_level=False).copy()
+
+        for run_id, run_raw_data, run_model_data in \
+                self._model_test_generator():
             # create a model matching the selected run_id
             neuro = run_raw_data.neuroticism.iloc[0]
-            neuro_level = proc_data.neuroticism_binner.bin(neuro)
+            neuro_level = self.proc_data.neuroticism_binner.bin(neuro)
 
             model = _EmpiricalExecutionTimeModel(
                 data=run_model_data,  # use only data from this participant
                 neuro_level=neuro_level,
-                impair_binner=proc_data.impairment_binner,
-                dur_binner=proc_data.duration_binner
+                impair_binner=self.proc_data.impairment_binner,
+                dur_binner=self.proc_data.duration_binner
             )
 
             # generate an execution time for each step of the original run,
@@ -225,3 +252,6 @@ class TestDataPreprocessing(TestCase):
                 model_iter.set_delay(row.delay)
 
                 # TODO: more complex test?
+
+    def test_theoretical_model(self) -> None:
+        pass
