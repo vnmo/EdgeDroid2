@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import abc
-from typing import Generator, Iterator, NamedTuple, Optional, Sequence, \
+from typing import Any, Generator, Iterator, NamedTuple, Optional, Sequence, \
     Tuple, Union
 
-import nptyping as npt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from scipy import stats
 
 from . import data as e_data
 
 _NUM = Union[float, int]
-_ARRAY_LIKE = Union[_NUM, npt.NDArray, Sequence]
 
 
 # TODO: pydocs
@@ -32,7 +31,7 @@ class Binner:
     """
 
     class BinningError(Exception):
-        def __init__(self, val: _ARRAY_LIKE,
+        def __init__(self, val: npt.ArrayLike,
                      bin_edges: np.ndarray):
             super(Binner.BinningError, self).__init__(
                 f'{val} do(es) not fall within the defined bin edges '
@@ -42,7 +41,7 @@ class Binner:
     def __init__(self, bin_edges: Sequence[Union[float, int]]):
         self._bin_edges = np.unique(bin_edges)
 
-    def bin(self, value: _ARRAY_LIKE) -> _ARRAY_LIKE:
+    def bin(self, value: npt.ArrayLike) -> npt.ArrayLike:
         """
         Bin a value or a series of values into the bin edges stored in this
         binner.
@@ -85,35 +84,44 @@ class PreprocessedData(NamedTuple):
     duration_binner: Binner
 
 
-def _calculate_impairment_chunks(impairment: pd.Series) \
-        -> Tuple[np.ndarray, np.ndarray]:
-    df = pd.DataFrame(index=impairment.index)
-    df['duration'] = np.nan
+def _process_impairment(impairment: npt.NDArray[Any]) \
+        -> Tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    transitions = np.empty(impairment.size + 1, dtype=int)
+    durations = np.empty(impairment.size + 1, dtype=int)
+    impairments = np.empty(impairment.size + 1, dtype=int)
 
-    # mark transitions as points were impairment changes
-    df['transition'] = impairment \
-        .cat.codes.diff(1) \
-        .replace(np.nan, 0) \
-        .astype(int)
+    # special initial behaviors
+    # transition before first step is 0
+    # duration before first step is -1
+    # impairment before first step is 0
+    transitions[0] = 0
+    durations[0] = -1
+    impairments[0] = 0
+    impairments[1:] = impairment
 
-    # group by contiguous segments of steps
-    df['chunk'] = df['transition'].abs().ne(0).cumsum()
-    for _, chunk in df.groupby('chunk'):
-        # add a duration count, this requires rows to be ordered
-        df.loc[chunk.index, 'duration'] = np.arange(len(chunk.index)) + 1
+    for i in range(1, impairments.size):
+        # compare with previous impairment and adjust transition and
+        # duration accordingly
+        transition = impairments[i] - impairments[i - 1]
 
-        # mark each row with the MOST RECENT transition value.
-        transition = chunk['transition'].iloc[0]
-        if transition != 0:
-            df.loc[chunk.index, 'transition'] = transition
+        if transition == 0:
+            # no change in impairment
+            # increment duration by 1 (or set to 1 if prev duration was -1)
+            duration = durations[i - 1] + 1 if durations[i - 1] > 0 else 1
+            # also set transition to same transition as before
+            transition = transitions[i - 1]
         else:
-            df.loc[chunk.index, 'transition'] = np.nan
+            # change in impairment
+            # reset duration to 1, store transition
+            duration = 1
+            transition = int(np.sign(transition))
 
-    # mark transitions as 1 (low to high), -1 (high to low) or 0 (NA)
-    # also shift because it's the latest transition
-    df['transition'] = np.sign(df['transition'].shift()).fillna(0).astype('int')
+        # store values
+        transitions[i] = transition
+        durations[i] = duration
+        impairments[i] = impairment[i - 1]
 
-    return df['transition'].to_numpy(), df['duration'].shift().to_numpy()
+    return impairments[:-1], transitions[:-1], durations[:-1]
 
 
 def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
@@ -163,10 +171,10 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
     for _, df in data.groupby('run_id'):
         # grouping by subject, basically
         # bin delay
-        impairment = pd.cut(df['delay'], impairment_bins)
-        prev_trans, prev_dur = _calculate_impairment_chunks(impairment)
+        impairment = pd.cut(df['delay'], impairment_bins).cat.codes.values
+        prev_imp, prev_trans, prev_dur = _process_impairment(impairment)
 
-        data.loc[df.index, 'prev_impairment'] = impairment.shift()
+        data.loc[df.index, 'prev_impairment'] = prev_imp
         data.loc[df.index, 'prev_duration'] = prev_dur
         data.loc[df.index, 'transition'] = prev_trans
 

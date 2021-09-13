@@ -10,75 +10,107 @@ from edgedroid.data import load_default_exec_time_data
 from edgedroid.execution_times import Binner, ExecutionTimeModelFactory, \
     ModelException, _EmpiricalExecutionTimeModel, \
     _TheoreticalExecutionTimeModel, \
-    _calculate_impairment_chunks, preprocess_data
+    _process_impairment, preprocess_data
 
 
 class TestDataPreprocessing(TestCase):
-    impairment_test = {
-        'impairment'     : pd.Series([
-            1, 1, 2, 2, 2, 0, 0, 3, 0, 0, 1, 1
-        ], dtype=pd.CategoricalDtype(categories=[0, 1, 2, 3], ordered=True)),
-        'prev_transition': np.array([
-            0, 0, 0, 1, 1, 1, -1, -1, 1, -1, -1, 1
-        ]),
-        'prev_duration'  : np.array([
-            np.nan, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1
-        ])
-    }
-
-    # test_data = pd.DataFrame({
-    #     'run_id'     : [1, 1, 2, 2, 2, 3, 3],
-    #     'neuroticism': [1.5, 1.5, 0.5, 0.5, 0.5, 2.5, 2.5],
-    #     'step_seq'   : [1, 2, 1, 2, 3, 1, 2],
-    #     'exec_time'  : [1, 1, 1, 2, 3, 1, 2],
-    #     'delay'      : [0.5, 1.5, 2.5, 1.5, 2.5, 0.5, 0.5],
-    # })
-
-    test_data = pd.DataFrame({
-        'run_id'     : [1, 1, 1, 1, 1, 1],
-        'neuroticism': [0.5, 1.5, 2.5, 0.5, 1.5, 2.5],
-        'step_seq'   : [1, 2, 3, 4, 5, 6],
-        'exec_time'  : [1, 1, 2, 2, 3, 3],
-        'delay'      : [1.5, 0.5, 0.5, 0.5, 2.5, 2.5],
-    })
-
-    exp_data = pd.DataFrame({
-        'run_id'         : [1, 1, 1, 1, 1, 1],
-        'step_seq'       : [1, 2, 3, 4, 5, 6],
-        'exec_time'      : [1, 1, 2, 2, 3, 3],
-        'neuroticism'    : [0, 1, 2, 0, 1, 2],
-        'prev_impairment': [-1, 1, 0, 0, 0, 2],
-        'prev_duration'  : [-1, 0, 0, 0, 1, 0],
-        'transition'     : [0, 0, -1, -1, -1, 1]
-    })
-
-    neuro_bins = np.array([-np.inf, 1, 2, np.inf])
-    delay_bins = np.array([-np.inf, 1, 2, np.inf])
-    duration_bins = np.array([-np.inf, 2, np.inf])
-
     def test_impairment_chunks(self) -> None:
-        prev_trans, prev_dur = _calculate_impairment_chunks(
-            impairment=self.impairment_test['impairment'])
+        # expected behavior:
+        # the starting step of a task has previous impairment 0
+        # the following steps have transitions depending on the impairment of
+        # the starting step
+        # if the starting step had a low impairment, transition is 0
+        # however, if starting step had a high impairment, transition is 1
+        # (i.e. we consider the step before the first step to have low
+        # impairment)
 
-        np.testing.assert_array_equal(
-            self.impairment_test['prev_transition'],
-            prev_trans
-        )
-        np.testing.assert_array_equal(
-            self.impairment_test['prev_duration'],
-            prev_dur
-        )
+        impairment_test_low = {
+            'impairment'     : np.array([
+                0, 0, 2, 2, 2, 0, 0, 3, 0, 0, 1, 1
+            ]),
+            'proc_impairment': np.array([
+                0, 0, 0, 2, 2, 2, 0, 0, 3, 0, 0, 1
+            ]),
+            'transition'     : np.array([
+                0, 0, 0, 1, 1, 1, -1, -1, 1, -1, -1, 1
+            ]),
+            'duration'       : np.array([
+                -1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1
+            ])
+        }
+
+        impairment_test_high = {
+            'impairment'     : np.array([
+                2, 2, 1, 1, 1, 0, 0, 3, 0, 0, 1, 1
+            ]),
+            'proc_impairment': np.array([
+                0, 2, 2, 1, 1, 1, 0, 0, 3, 0, 0, 1
+            ]),
+            'transition'     : np.array([
+                0, 1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1
+            ]),
+            'duration'       : np.array([
+                -1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1
+            ])
+        }
+
+        for imp_test in (impairment_test_low, impairment_test_high):
+            proc_imp, prev_trans, prev_dur = _process_impairment(
+                impairment=imp_test['impairment'])
+
+            np.testing.assert_array_equal(
+                imp_test['proc_impairment'],
+                proc_imp,
+                err_msg=f'Processed impairments don\'t'
+                        f' match!\n{imp_test["impairment"]=}'
+            )
+
+            np.testing.assert_array_equal(
+                imp_test['transition'],
+                prev_trans,
+                err_msg=f'Processed transitions don\'t'
+                        f' match!\n{imp_test["impairment"]=}'
+            )
+
+            np.testing.assert_array_equal(
+                imp_test['duration'],
+                prev_dur,
+                err_msg=f'Processed durations don\'t'
+                        f' match!\n{imp_test["impairment"]=}'
+            )
 
     def test_preprocess_data(self) -> None:
-        test_data = self.test_data.set_index(['run_id', 'step_seq'],
-                                             verify_integrity=True)
-        exp_data = self.exp_data.set_index(['run_id', 'step_seq'],
-                                           verify_integrity=True)
+        test_data = pd.DataFrame({
+            'run_id'     : [1, 1, 1, 1, 1, 1],
+            'neuroticism': [0.5, 1.5, 2.5, 0.5, 1.5, 2.5],
+            'step_seq'   : [1, 2, 3, 4, 5, 6],
+            'exec_time'  : [1, 1, 2, 2, 3, 3],
+            'delay'      : [1.5, 0.5, 0.5, 0.5, 2.5, 2.5],
+        })
+
+        exp_data = pd.DataFrame({
+            'run_id'         : [1, 1, 1, 1, 1, 1],
+            'step_seq'       : [1, 2, 3, 4, 5, 6],
+            'exec_time'      : [1, 1, 2, 2, 3, 3],
+            'neuroticism'    : [0, 1, 2, 0, 1, 2],
+            'prev_impairment': [0, 1, 0, 0, 0, 2],
+            'prev_duration'  : [-1, 0, 0, 0, 1, 0],
+            'transition'     : [0, 1, -1, -1, -1, 1]
+        })
+
+        neuro_bins = np.array([-np.inf, 1, 2, np.inf])
+        delay_bins = np.array([-np.inf, 1, 2, np.inf])
+        duration_bins = np.array([0, 2, np.inf])
+
+        test_data = test_data.set_index(['run_id', 'step_seq'],
+                                        verify_integrity=True)
+        exp_data = exp_data.set_index(['run_id', 'step_seq'],
+                                      verify_integrity=True)
 
         result = preprocess_data(
-            neuroticism_bins=self.neuro_bins,
-            impairment_bins=self.delay_bins,
-            duration_bins=self.duration_bins,
+            neuroticism_bins=neuro_bins,
+            impairment_bins=delay_bins,
+            duration_bins=duration_bins,
             execution_time_data=test_data
         )
 
@@ -86,26 +118,26 @@ class TestDataPreprocessing(TestCase):
                                       check_dtype=False)
 
         # very simple, multi-run test
-        test_data = deque()
-        exp_data = deque()
+        test_data_d = deque()
+        exp_data_d = deque()
         for i in range(40):
-            test_df = self.test_data.copy()
+            test_df = test_data.copy().reset_index()
             test_df['run_id'] = i
-            test_data.append(test_df)
+            test_data_d.append(test_df)
 
-            exp_df = self.exp_data.copy()
+            exp_df = exp_data.copy().reset_index()
             exp_df['run_id'] = i
-            exp_data.append(exp_df)
+            exp_data_d.append(exp_df)
 
-        test_data = pd.concat(test_data, ignore_index=True) \
+        test_data = pd.concat(test_data_d, ignore_index=True) \
             .set_index(['run_id', 'step_seq'], verify_integrity=True)
-        exp_data = pd.concat(exp_data, ignore_index=True) \
+        exp_data = pd.concat(exp_data_d, ignore_index=True) \
             .set_index(['run_id', 'step_seq'], verify_integrity=True)
 
         result = preprocess_data(
-            neuroticism_bins=self.neuro_bins,
-            impairment_bins=self.delay_bins,
-            duration_bins=self.duration_bins,
+            neuroticism_bins=neuro_bins,
+            impairment_bins=delay_bins,
+            duration_bins=duration_bins,
             execution_time_data=test_data
         )
 
@@ -208,12 +240,12 @@ class TestModels(TestCase):
             execution_time_data=data,
             neuroticism_bins=np.array([-np.inf, np.inf]),
             impairment_bins=np.array([-np.inf, np.inf]),
-            duration_bins=np.array([-np.inf, np.inf])
+            duration_bins=np.array([0, np.inf])
         )
         proc_df = proc_data.data
 
         np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
-        np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [-1, 0])
+        np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [0])
         np.testing.assert_array_equal(proc_df.prev_duration.unique(), [-1, 0])
         np.testing.assert_array_equal(proc_df.transition.unique(), [0])
 
@@ -264,7 +296,7 @@ class TestModels(TestCase):
 
         # add 0.1 tolerance, to make sure each whole number actually falls
         # within a bin
-        dur_bins = np.concatenate(([-np.inf], durations, [np.inf])) + 0.1
+        dur_bins = np.concatenate(([0], durations, [np.inf])) + 0.1
 
         proc_data = preprocess_data(
             execution_time_data=data,
@@ -275,8 +307,7 @@ class TestModels(TestCase):
         proc_df = proc_data.data
 
         np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
-        np.testing.assert_array_equal(proc_df.prev_impairment.unique(),
-                                      [-1, 0])
+        np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [0])
         np.testing.assert_array_equal(proc_df.transition.unique(), [0])
         np.testing.assert_array_equal(proc_df.prev_duration.unique(),
                                       np.concatenate(([-1],
@@ -312,66 +343,72 @@ class TestModels(TestCase):
             # save step
             prev_step = step
 
-    def _model_test_generator(self) \
-            -> Generator[Tuple[Any, pd.DataFrame, pd.DataFrame], None, None]:
-        model_data = self.proc_data.data
-
-        # run tests with three different, random subjects
-        run_ids = model_data.index.get_level_values(0)
-        run_ids = self.rng.choice(run_ids, size=3)
-
-        # run tests for each subject (run_id)
-        for run_id in run_ids:
-            run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
-            run_model_data = model_data.xs(run_id, drop_level=False).copy()
-
-            yield run_id, run_raw_data, run_model_data
-
-    def test_empirical_model(self) -> None:
-        # we use the default data to test
-        # raw_data = load_default_exec_time_data()
-        # proc_data = preprocess_data(execution_time_data=raw_data)
-
-        # model_data = self.proc_data.data
-        #
-        # # run tests with three different, random subjects
-        # run_ids = model_data.index.get_level_values(0)
-        # run_ids = self.rng.choice(run_ids, size=3)
-        #
-        # # run tests for each subject (run_id)
-        # for run_id in run_ids:
-        #     run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
-        #     run_model_data = model_data.xs(run_id, drop_level=False).copy()
-
-        for run_id, run_raw_data, run_model_data in \
-                self._model_test_generator():
-            # create a model matching the selected run_id
-            neuro = run_raw_data.neuroticism.iloc[0]
-            neuro_level = self.proc_data.neuroticism_binner.bin(neuro)
-
-            model = _EmpiricalExecutionTimeModel(
-                data=run_model_data,  # use only data from this participant
-                neuro_level=neuro_level,
-                impair_binner=self.proc_data.impairment_binner,
-                dur_binner=self.proc_data.duration_binner
-            )
-
-            # generate an execution time for each step of the original run,
-            # then compare obtained distributions for similarity
-            model_iter = model.execution_time_iterator()
-            model_etimes = np.empty(shape=len(run_raw_data.index))
-
-            for i, (row, exec_time) in \
-                    enumerate(zip(run_raw_data.itertuples(name='Step'),
-                                  model_iter)):
-                # outputs of empirical model should all be in the original data
-                self.assertTrue(np.any(np.isclose(exec_time,
-                                                  run_raw_data.exec_time)))
-
-                model_etimes[i] = exec_time
-                model_iter.set_delay(row.delay)
-
-                # TODO: more complex test?
-
-    def test_theoretical_model(self) -> None:
+    def test_impairment_transition_empirical(self):
+        # impairment transition test
+        data = self.proc_data.data
+        print(data.loc[pd.IndexSlice[:, [1, 2, 3, 4, 5]], :])
         pass
+
+    # def _model_test_generator(self) \
+    #         -> Generator[Tuple[Any, pd.DataFrame, pd.DataFrame], None, None]:
+    #     model_data = self.proc_data.data
+    #
+    #     # run tests with three different, random subjects
+    #     run_ids = model_data.index.get_level_values(0)
+    #     run_ids = self.rng.choice(run_ids, size=3)
+    #
+    #     # run tests for each subject (run_id)
+    #     for run_id in run_ids:
+    #         run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
+    #         run_model_data = model_data.xs(run_id, drop_level=False).copy()
+    #
+    #         yield run_id, run_raw_data, run_model_data
+
+    # def test_empirical_model(self) -> None:
+    #     # we use the default data to test
+    #     # raw_data = load_default_exec_time_data()
+    #     # proc_data = preprocess_data(execution_time_data=raw_data)
+    #
+    #     # model_data = self.proc_data.data
+    #     #
+    #     # # run tests with three different, random subjects
+    #     # run_ids = model_data.index.get_level_values(0)
+    #     # run_ids = self.rng.choice(run_ids, size=3)
+    #     #
+    #     # # run tests for each subject (run_id)
+    #     # for run_id in run_ids:
+    #     #     run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
+    #     #     run_model_data = model_data.xs(run_id, drop_level=False).copy()
+    #
+    #     for run_id, run_raw_data, run_model_data in \
+    #             self._model_test_generator():
+    #         # create a model matching the selected run_id
+    #         neuro = run_raw_data.neuroticism.iloc[0]
+    #         neuro_level = self.proc_data.neuroticism_binner.bin(neuro)
+    #
+    #         model = _EmpiricalExecutionTimeModel(
+    #             data=run_model_data,  # use only data from this participant
+    #             neuro_level=neuro_level,
+    #             impair_binner=self.proc_data.impairment_binner,
+    #             dur_binner=self.proc_data.duration_binner
+    #         )
+    #
+    #         # generate an execution time for each step of the original run,
+    #         # then compare obtained distributions for similarity
+    #         model_iter = model.execution_time_iterator()
+    #         model_etimes = np.empty(shape=len(run_raw_data.index))
+    #
+    #         for i, (row, exec_time) in \
+    #                 enumerate(zip(run_raw_data.itertuples(name='Step'),
+    #                               model_iter)):
+    #             # outputs of empirical model should all be in the original data
+    #             self.assertTrue(np.any(np.isclose(exec_time,
+    #                                               run_raw_data.exec_time)))
+    #
+    #             model_etimes[i] = exec_time
+    #             model_iter.set_delay(row.delay)
+    #
+    #             # TODO: more complex test?
+    #
+    # def test_theoretical_model(self) -> None:
+    #     pass
