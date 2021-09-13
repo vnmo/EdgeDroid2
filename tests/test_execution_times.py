@@ -1,4 +1,5 @@
 from collections import deque
+from collections import deque
 from typing import Any, Generator, Tuple
 from unittest import TestCase
 
@@ -156,6 +157,7 @@ class TestModels(TestCase):
         raw_data = load_default_exec_time_data()
         cls.proc_data = preprocess_data(execution_time_data=raw_data)
         cls.raw_data = raw_data
+        cls.run_ids = raw_data.index.get_level_values(0).unique()
 
     def test_model_factory(self) -> None:
         factory = ExecutionTimeModelFactory()
@@ -191,6 +193,124 @@ class TestModels(TestCase):
                 if i > 10:
                     break
                 it.set_delay(10)
+
+    def test_base_case_empirical(self):
+        # base case test
+        # 1 participant, 1 neuroticism values
+        # all bins are single
+        # all data extracted from the model should come from the participant
+
+        data = self.raw_data.xs(self.rng.choice(self.run_ids),
+                                drop_level=False).copy()
+        self.assertTrue(len(data.neuroticism.unique()), 0)
+
+        proc_data = preprocess_data(
+            execution_time_data=data,
+            neuroticism_bins=np.array([-np.inf, np.inf]),
+            impairment_bins=np.array([-np.inf, np.inf]),
+            duration_bins=np.array([-np.inf, np.inf])
+        )
+        proc_df = proc_data.data
+
+        np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
+        np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [-1, 0])
+        np.testing.assert_array_equal(proc_df.prev_duration.unique(), [-1, 0])
+        np.testing.assert_array_equal(proc_df.transition.unique(), [0])
+
+        model = _EmpiricalExecutionTimeModel(
+            data=proc_df,
+            neuro_level=0,
+            impair_binner=proc_data.impairment_binner,
+            dur_binner=proc_data.duration_binner
+        )
+
+        # sample for first step should correspond to value for initial row
+        np.testing.assert_almost_equal(model.get_initial_step_execution_time(),
+                                       data.exec_time.values[0])
+
+        # delay for initial step
+        delay = data.delay.values[0]
+
+        # execution times obtained after the first step
+        # should always be taken from the collection of steps where N > 1
+        data = data.iloc[1:]
+        for step in data.itertuples(name='Step'):
+            exec_time = model.get_execution_time(delay)  # use previous delay
+            self.assertTrue(np.any(
+                np.isclose(exec_time, data.exec_time.values)))
+
+            # update delay at end of loop, always
+            delay = step.delay
+
+    def test_duration_binning_empirical(self):
+        # duration binning test
+        # 1 participant, 1 neuroticism level
+        # all bins except duration are single
+        # duration is binned such that each step gets its own bin
+        # all data extracted from the model should come from the participant,
+        # and each sampled execution time should match the obtained execution
+        # time from the experiments
+
+        # grab a random participant
+        data = self.raw_data.xs(self.rng.choice(self.run_ids),
+                                drop_level=False).copy()
+        self.assertTrue(len(data.neuroticism.unique()), 0)
+
+        # all bins are single EXCEPT DURATION
+        # duration bins are set up so that each step gets it's OWN duration lvl
+        # this way we avoid randomness when sampling
+        num_steps = len(data.index)
+        durations = np.arange(1, num_steps)
+
+        # add 0.1 tolerance, to make sure each whole number actually falls
+        # within a bin
+        dur_bins = np.concatenate(([-np.inf], durations, [np.inf])) + 0.1
+
+        proc_data = preprocess_data(
+            execution_time_data=data,
+            neuroticism_bins=np.array([-np.inf, np.inf]),
+            impairment_bins=np.array([-np.inf, np.inf]),
+            duration_bins=dur_bins
+        )
+        proc_df = proc_data.data
+
+        np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
+        np.testing.assert_array_equal(proc_df.prev_impairment.unique(),
+                                      [-1, 0])
+        np.testing.assert_array_equal(proc_df.transition.unique(), [0])
+        np.testing.assert_array_equal(proc_df.prev_duration.unique(),
+                                      np.concatenate(([-1],
+                                                      np.arange(0, 167))))
+
+        model = _EmpiricalExecutionTimeModel(
+            data=proc_df,
+            neuro_level=0,
+            impair_binner=proc_data.impairment_binner,
+            dur_binner=proc_data.duration_binner
+        )
+
+        prev_step: Any = None
+        for i, step in enumerate(data.itertuples(name='Step')):
+            if i == 0:
+                # sample for first step should
+                # correspond to value for initial row
+                np.testing.assert_almost_equal(
+                    model.get_initial_step_execution_time(),
+                    data.exec_time.values[i])
+            else:
+                # use previous delay
+                exec_time = model.get_execution_time(prev_step.delay)
+
+                # since duration is binned in such a way that each steps gets
+                # its own bin, the sampled value here should always
+                # correspond to the execution time of the current step
+                self.assertTrue(np.isclose(
+                    exec_time,
+                    step.exec_time
+                ))
+
+            # save step
+            prev_step = step
 
     def _model_test_generator(self) \
             -> Generator[Tuple[Any, pd.DataFrame, pd.DataFrame], None, None]:
