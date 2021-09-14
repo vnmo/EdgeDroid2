@@ -1,6 +1,6 @@
 from collections import deque
 from collections import deque
-from typing import Any, Generator, Tuple
+from typing import Any
 from unittest import TestCase
 
 import numpy as np
@@ -345,9 +345,64 @@ class TestModels(TestCase):
 
     def test_impairment_transition_empirical(self):
         # impairment transition test
-        data = self.proc_data.data
-        print(data.loc[pd.IndexSlice[:, [1, 2, 3, 4, 5]], :])
-        pass
+        # all bins are single, except impairment
+        # delay is binned into two levels (i.e. below and above a threshold)
+        # at each step, the execution time then comes from the impairment of
+        # the previous step and the most recent transition!
+
+        # grab a random participant
+        data = self.raw_data.xs(self.rng.choice(self.run_ids),
+                                drop_level=False).copy()
+        self.assertTrue(len(data.neuroticism.unique()), 0)
+
+        # bin delays into two ranges
+        delay_t = (data.delay.min() + data.delay.max()) / 2.0
+        delay_bins = np.array([-np.inf, delay_t, np.inf])
+
+        proc_data = preprocess_data(
+            execution_time_data=data,
+            neuroticism_bins=np.array([-np.inf, np.inf]),
+            impairment_bins=delay_bins,
+            duration_bins=np.array([0, np.inf])
+        )
+        proc_df = proc_data.data
+
+        np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
+        np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [0, 1])
+        self.assertSetEqual(set(proc_df.transition.unique()), {-1, 0, 1})
+        np.testing.assert_array_equal(proc_df.prev_duration.unique(), [-1, 0])
+
+        model = _EmpiricalExecutionTimeModel(
+            data=proc_df,
+            neuro_level=0,
+            impair_binner=proc_data.impairment_binner,
+            dur_binner=proc_data.duration_binner
+        )
+
+        prev_step: Any = None
+        prev_transition = 0
+        prev_impairment = 0
+        for i, step in enumerate(data.itertuples(name='Step')):
+            if i == 0:
+                # sample for first step should
+                # correspond to value for initial row
+                np.testing.assert_almost_equal(
+                    model.get_initial_step_execution_time(),
+                    data.exec_time.values[i])
+
+                if step.delay > delay_t:
+                    # update impairment
+                    prev_impairment = 1
+                    prev_transition = 1
+
+            else:
+                # for every step after the first we check whether the previous
+                # delay was below or equal to the delay threshold.
+                # we also track transitions
+                # TODO
+                pass
+
+            prev_step = step
 
     # def _model_test_generator(self) \
     #         -> Generator[Tuple[Any, pd.DataFrame, pd.DataFrame], None, None]:
@@ -401,7 +456,8 @@ class TestModels(TestCase):
     #         for i, (row, exec_time) in \
     #                 enumerate(zip(run_raw_data.itertuples(name='Step'),
     #                               model_iter)):
-    #             # outputs of empirical model should all be in the original data
+    #             # outputs of empirical model should all be in the original
+    #             data
     #             self.assertTrue(np.any(np.isclose(exec_time,
     #                                               run_raw_data.exec_time)))
     #
