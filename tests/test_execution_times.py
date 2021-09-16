@@ -374,7 +374,6 @@ class TestModels(TestCase):
             duration_bins=np.array([0, np.inf])
         )
         proc_df = proc_data.data
-        print(proc_df[['prev_impairment', 'prev_duration', 'transition']])
 
         np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
         np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [0, 1])
@@ -398,3 +397,9 @@ class TestModels(TestCase):
         step2_etime = model.get_execution_time(delay=step1_delay)
         np.testing.assert_almost_equal(step2_etime,
                                        test_data.exec_time.values[1])
+        step3_delay = test_data.delay.values[1]
+
+        # step 3
+        step3_etime = model.get_execution_time(delay=step3_delay)
+        np.testing.assert_almost_equal(step3_etime,
+                                       test_data.exec_time.values[2])
