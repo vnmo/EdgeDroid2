@@ -383,7 +383,7 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._impairment_binner = impair_binner
         self._duration_binner = dur_binner
 
-        self._prev_impairment = None
+        self._prev_impairment = 0
         self._duration = 0
         self._latest_transition = 0
 
@@ -401,11 +401,7 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         except Binner.BinningError as e:
             raise ModelException() from e
 
-        if self._prev_impairment is None:
-            # previous step was first step
-            duration = 1
-            transition = self._latest_transition
-        elif impairment == self._prev_impairment:
+        if impairment == self._prev_impairment:
             duration = self._duration + 1
             transition = self._latest_transition
         else:

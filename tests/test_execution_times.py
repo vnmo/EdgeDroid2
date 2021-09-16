@@ -234,7 +234,7 @@ class TestModels(TestCase):
 
         data = self.raw_data.xs(self.rng.choice(self.run_ids),
                                 drop_level=False).copy()
-        self.assertTrue(len(data.neuroticism.unique()), 0)
+        self.assertEqual(len(data.neuroticism.unique()), 1)
 
         proc_data = preprocess_data(
             execution_time_data=data,
@@ -286,7 +286,7 @@ class TestModels(TestCase):
         # grab a random participant
         data = self.raw_data.xs(self.rng.choice(self.run_ids),
                                 drop_level=False).copy()
-        self.assertTrue(len(data.neuroticism.unique()), 0)
+        self.assertEqual(len(data.neuroticism.unique()), 1)
 
         # all bins are single EXCEPT DURATION
         # duration bins are set up so that each step gets it's OWN duration lvl
@@ -350,22 +350,31 @@ class TestModels(TestCase):
         # at each step, the execution time then comes from the impairment of
         # the previous step and the most recent transition!
 
-        # grab a random participant
-        data = self.raw_data.xs(self.rng.choice(self.run_ids),
-                                drop_level=False).copy()
-        self.assertTrue(len(data.neuroticism.unique()), 0)
+        # this test needs specially designed data
+        # we need to test low-to-high transitions and high-to-low transitions
+        # this means at least two different delays.
+        # everything else is factored away, so we only need three steps
+        # first step always has a different distribution
+        # we set first step impairment to low
+        # second step for the the low-to-high transitions and high impairment
+        # third step for the high-to-low transition
+        test_data = pd.DataFrame({
+            'run_id'     : [0, 0, 0],
+            'step_seq'   : [1, 2, 3],
+            'exec_time'  : [1, 2, 3],
+            'neuroticism': [0, 0, 0],
+            'delay'      : [2, 1, 2]
+        }).set_index(['run_id', 'step_seq'], verify_integrity=True)
 
-        # bin delays into two ranges
-        delay_t = (data.delay.min() + data.delay.max()) / 2.0
-        delay_bins = np.array([-np.inf, delay_t, np.inf])
-
+        delay_bins = np.array([-np.inf, 1.5, np.inf])
         proc_data = preprocess_data(
-            execution_time_data=data,
+            execution_time_data=test_data,
             neuroticism_bins=np.array([-np.inf, np.inf]),
             impairment_bins=delay_bins,
             duration_bins=np.array([0, np.inf])
         )
         proc_df = proc_data.data
+        print(proc_df[['prev_impairment', 'prev_duration', 'transition']])
 
         np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
         np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [0, 1])
@@ -379,92 +388,13 @@ class TestModels(TestCase):
             dur_binner=proc_data.duration_binner
         )
 
-        prev_step: Any = None
-        prev_transition = 0
-        prev_impairment = 0
-        for i, step in enumerate(data.itertuples(name='Step')):
-            if i == 0:
-                # sample for first step should
-                # correspond to value for initial row
-                np.testing.assert_almost_equal(
-                    model.get_initial_step_execution_time(),
-                    data.exec_time.values[i])
+        # step 1 should have a different distribution
+        # sample for first step should correspond to value for initial row
+        np.testing.assert_almost_equal(model.get_initial_step_execution_time(),
+                                       test_data.exec_time.values[0])
+        step1_delay = test_data.delay.values[0]
 
-                if step.delay > delay_t:
-                    # update impairment
-                    prev_impairment = 1
-                    prev_transition = 1
-
-            else:
-                # for every step after the first we check whether the previous
-                # delay was below or equal to the delay threshold.
-                # we also track transitions
-                # TODO
-                pass
-
-            prev_step = step
-
-    # def _model_test_generator(self) \
-    #         -> Generator[Tuple[Any, pd.DataFrame, pd.DataFrame], None, None]:
-    #     model_data = self.proc_data.data
-    #
-    #     # run tests with three different, random subjects
-    #     run_ids = model_data.index.get_level_values(0)
-    #     run_ids = self.rng.choice(run_ids, size=3)
-    #
-    #     # run tests for each subject (run_id)
-    #     for run_id in run_ids:
-    #         run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
-    #         run_model_data = model_data.xs(run_id, drop_level=False).copy()
-    #
-    #         yield run_id, run_raw_data, run_model_data
-
-    # def test_empirical_model(self) -> None:
-    #     # we use the default data to test
-    #     # raw_data = load_default_exec_time_data()
-    #     # proc_data = preprocess_data(execution_time_data=raw_data)
-    #
-    #     # model_data = self.proc_data.data
-    #     #
-    #     # # run tests with three different, random subjects
-    #     # run_ids = model_data.index.get_level_values(0)
-    #     # run_ids = self.rng.choice(run_ids, size=3)
-    #     #
-    #     # # run tests for each subject (run_id)
-    #     # for run_id in run_ids:
-    #     #     run_raw_data = self.raw_data.xs(run_id, drop_level=False).copy()
-    #     #     run_model_data = model_data.xs(run_id, drop_level=False).copy()
-    #
-    #     for run_id, run_raw_data, run_model_data in \
-    #             self._model_test_generator():
-    #         # create a model matching the selected run_id
-    #         neuro = run_raw_data.neuroticism.iloc[0]
-    #         neuro_level = self.proc_data.neuroticism_binner.bin(neuro)
-    #
-    #         model = _EmpiricalExecutionTimeModel(
-    #             data=run_model_data,  # use only data from this participant
-    #             neuro_level=neuro_level,
-    #             impair_binner=self.proc_data.impairment_binner,
-    #             dur_binner=self.proc_data.duration_binner
-    #         )
-    #
-    #         # generate an execution time for each step of the original run,
-    #         # then compare obtained distributions for similarity
-    #         model_iter = model.execution_time_iterator()
-    #         model_etimes = np.empty(shape=len(run_raw_data.index))
-    #
-    #         for i, (row, exec_time) in \
-    #                 enumerate(zip(run_raw_data.itertuples(name='Step'),
-    #                               model_iter)):
-    #             # outputs of empirical model should all be in the original
-    #             data
-    #             self.assertTrue(np.any(np.isclose(exec_time,
-    #                                               run_raw_data.exec_time)))
-    #
-    #             model_etimes[i] = exec_time
-    #             model_iter.set_delay(row.delay)
-    #
-    #             # TODO: more complex test?
-    #
-    # def test_theoretical_model(self) -> None:
-    #     pass
+        # step 2 should correspond to the exec time for the second row
+        step2_etime = model.get_execution_time(delay=step1_delay)
+        np.testing.assert_almost_equal(step2_etime,
+                                       test_data.exec_time.values[1])
