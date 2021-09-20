@@ -203,6 +203,8 @@ class ModelException(Exception):
 class ExecutionTimeModel(abc.ABC):
     """
     Defines the general interface for execution time models.
+
+    TODO: Define fallback behavior for missing data!
     """
 
     @abc.abstractmethod
