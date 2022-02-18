@@ -3,3 +3,6 @@ pandas
 pyarrow
 scipy
 nptyping
+opencv-python
+pyyaml
+parse
