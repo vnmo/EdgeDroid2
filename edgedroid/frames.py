@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import tarfile
+import time
 from collections import deque
 from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Iterator, Sequence
 
 import cv2
 import nptyping as npt
+import numpy as np
+import pandas as pd
 import parse
 import yaml
 
@@ -106,3 +109,129 @@ class FrameSet:
             initial_frame=init_frame,
             steps=steps
         )
+
+
+class FrameModel:
+    def __init__(self, probabilities: pd.DataFrame):
+        """
+        Parameters
+        ----------
+        probabilities
+            A Pandas DataFrame containing two columns 'bin_start' and
+            'bin_end', and an arbitrary number of additional columns.
+            'bin_start' and 'bin_end' correspond to the left and right limits
+            respectively of left-inclusive, right-exclusive bins of relative
+            time position (e.g. if total duration is 10 seconds, 3 seconds
+            would fall in bin [0.0, 0.5) and 7 seconds in bin [0.5, 1.0)).
+            All other columns are interpreted as relative probabilities for a
+            tag (identified by the column name) within a bin.
+            All probabilities for tags in a bin MUST add up to 1.0.
+
+            For example, a row<br><br>
+
+            <table>
+            <thead>
+              <tr>
+                <th>bin_start</th>
+                <th>bin_end</th>
+                <th>repeat</th>
+                <th>low_confidence</th>
+                <th>blank</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>0.0</td>
+                <td>0.2</td>
+                <td>0.3</td>
+                <td>0.1</td>
+                <td>0.6</td>
+              </tr>
+            </tbody>
+            </table><br>
+
+            indicates that within bin [0, 0.2), 'repeat' frames occur with a
+            relative probability of 0.3, 'low_confidence' frames with a
+            relative probability of 0.1, and 'blank' frames with a relative
+            probability of 0.6.
+
+        """
+
+        # validation
+
+        columns = set(probabilities.columns)
+
+        try:
+            columns.remove('bin_start')
+            columns.remove('bin_end')
+        except KeyError:
+            raise RuntimeError('Probability dataframe must include bin_start '
+                               'and bin_end columns.')
+
+        prob_sums = np.zeros(len(probabilities.index))
+
+        for column in columns:
+            prob_sums += probabilities[column]
+
+        if not np.all(np.isclose(prob_sums, 1.0)):
+            raise RuntimeError('Sum of probabilities for each bin must be '
+                               'equal to 1.0.')
+
+        # process probabilities
+        self._probs = probabilities.copy()
+        self._probs['interval'] = pd.IntervalIndex.from_arrays(
+            left=probabilities['bin_start'],
+            right=probabilities['bin_end'],
+            closed='left',
+        )
+        self._probs = self._probs \
+            .drop(columns=['bin_start', 'bin_end']) \
+            .set_index('interval', verify_integrity=True)
+
+        self._rng = np.random.default_rng()
+
+    def _sample_from_distribution(self, rel_pos: float) -> str:
+        probs = self._probs[self._probs.index.contains(rel_pos)].iloc[0]
+        return self._rng.choice(
+            a=probs.index,
+            replace=False,
+            p=probs.values
+        )
+
+    def step_iterator(self,
+                      target_time: float,
+                      final_tag: str = 'success') -> Iterator[str]:
+        """
+        Returns
+        -------
+        """
+
+        step_start = time.monotonic()
+        latest_call = step_start
+        delta_ts = deque()
+        ret = None
+
+        while ret != final_tag:
+            current_call = time.monotonic()
+            delta_ts.append(current_call - latest_call)
+            uncert_window = np.mean(delta_ts) + np.std(delta_ts)
+            delta_start = (current_call - step_start)
+            rel_pos = delta_start / target_time
+            rem_time = target_time - delta_start
+
+            latest_call = current_call
+
+            if uncert_window < rem_time:
+                # remaining time is more than the sum of the mean dt and the
+                # std dt, return a frame according to distribution
+                # get corresponding probability row in table
+                ret = yield self._sample_from_distribution(rel_pos)
+            elif 0 < rem_time:
+                # remaining time is less than mean_dt + std_dt
+                # toss a coin, and choose either returning success tag
+                # or sampling from distribution
+                ret = yield self._sample_from_distribution(rel_pos) \
+                    if self._rng.choice((True, False)) else final_tag
+            else:
+                # no remaining time left, return success tag
+                ret = yield final_tag
