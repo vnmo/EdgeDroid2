@@ -6,7 +6,7 @@ from collections import deque
 from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Iterator, Sequence
+from typing import Any, Dict, Iterator, Sequence, Tuple, Union
 
 import cv2
 import nptyping as npt
@@ -198,40 +198,56 @@ class FrameModel:
             p=probs.values
         )
 
+    def get_frame_at_instant(self,
+                             instant: float,
+                             step_time: float,
+                             final_tag: str = 'success') -> str:
+        # purely according to distributions
+        rel_pos = instant / step_time
+        return self._sample_from_distribution(rel_pos) \
+            if rel_pos < 1 else final_tag
+
     def step_iterator(self,
                       target_time: float,
-                      final_tag: str = 'success') -> Iterator[str]:
+                      final_tag: str = 'success',
+                      _return_pos: bool = False) \
+            -> Iterator[str | Tuple[str, int]]:
         """
         Returns
         -------
         """
 
         step_start = time.monotonic()
-        latest_call = step_start
+        previous_instant = 0
         delta_ts = deque()
-        ret = None
 
-        while ret != final_tag:
-            current_call = time.monotonic()
-            delta_ts.append(current_call - latest_call)
+        done = False
+        while not done:
+            instant = time.monotonic() - step_start
+            delta_ts.append(instant - previous_instant)
             uncert_window = np.mean(delta_ts) + np.std(delta_ts)
-            delta_start = (current_call - step_start)
-            rel_pos = delta_start / target_time
-            rem_time = target_time - delta_start
+            rem_time = target_time - instant
 
-            latest_call = current_call
+            previous_instant = instant
 
             if uncert_window < rem_time:
                 # remaining time is more than the sum of the mean dt and the
                 # std dt, return a frame according to distribution
-                # get corresponding probability row in table
-                ret = yield self._sample_from_distribution(rel_pos)
+                yield self.get_frame_at_instant(instant,
+                                                target_time,
+                                                final_tag=final_tag)
             elif 0 < rem_time:
                 # remaining time is less than mean_dt + std_dt
                 # toss a coin, and choose either returning success tag
                 # or sampling from distribution
-                ret = yield self._sample_from_distribution(rel_pos) \
-                    if self._rng.choice((True, False)) else final_tag
+                if self._rng.choice((True, False)):
+                    yield self.get_frame_at_instant(instant,
+                                                    target_time,
+                                                    final_tag=final_tag)
+                else:
+                    yield final_tag
+                    done = True
             else:
                 # no remaining time left, return success tag
-                ret = yield final_tag
+                yield final_tag
+                done = True
