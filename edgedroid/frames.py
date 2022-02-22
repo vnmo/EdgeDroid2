@@ -58,7 +58,7 @@ class FrameSet:
         return self._steps[step_index][frame_tag].copy()
 
     @classmethod
-    def from_datafile(cls, tarfile_path: PathLike) -> FrameSet:
+    def from_datafile(cls, tarfile_path: PathLike | str) -> FrameSet:
         """
         Opens a frame datafile and parses it.
 

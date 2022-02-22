@@ -1,4 +1,3 @@
-import time
 import unittest
 
 import numpy as np
@@ -13,7 +12,6 @@ class TestFrameModel(unittest.TestCase):
         # load data
         self.probs = pd.read_csv('../frame_probs_per_relpos.csv')
         self.model = FrameModel(self.probs)
-
 
         self.probs['interval'] = pd.IntervalIndex.from_arrays(
             left=self.probs['bin_start'],
@@ -52,4 +50,3 @@ class TestFrameModel(unittest.TestCase):
             results = results / results.sum()
             diff = (results - bin_probs).abs()
             nptesting.assert_array_less(diff, self.comp_thresh)
-
