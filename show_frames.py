@@ -18,7 +18,7 @@ def show_frames():
 
         cv2.putText(
             img=img,
-            text=frame,
+            text=f'{frame} (size = {img.shape})',
             color=(0, 0, 255),
             org=(40, 40),
             fontFace=cv2.FONT_HERSHEY_PLAIN,
@@ -30,6 +30,7 @@ def show_frames():
 
     cv2.waitKey(5000)
     cv2.destroyAllWindows()
+
 
 if __name__ == '__main__':
     show_frames()
