@@ -14,7 +14,9 @@ from . import data as e_data
 _NUM = Union[float, int]
 
 
-# TODO: pydocs
+class ModelError(Exception):
+    pass
+
 
 class Binner:
     """
@@ -424,9 +426,15 @@ class _EmpiricalExecutionTimeModel(ExecutionTimeModel):
         params = self._calculate_parameters(delay)
 
         # get the appropriate data view
-        data = self._data_views[(params.impairment_lvl,
-                                 params.duration_lvl,
-                                 params.transition)]
+        try:
+            data = self._data_views[(params.impairment_lvl,
+                                     params.duration_lvl,
+                                     params.transition)]
+        except KeyError:
+            raise ModelException(
+                'Attempted to look up data for parameters: '
+                f'{params}, however no such data could be found!'
+            )
 
         # update state
         self._prev_impairment = params.impairment_lvl
@@ -498,9 +506,15 @@ class _TheoreticalExecutionTimeModel(_EmpiricalExecutionTimeModel):
         params = self._calculate_parameters(delay)
 
         # get the appropriate distribution
-        dist = self._dists[(params.impairment_lvl,
-                            params.duration_lvl,
-                            params.transition)]
+        try:
+            dist = self._dists[(params.impairment_lvl,
+                                params.duration_lvl,
+                                params.transition)]
+        except KeyError:
+            raise ModelException(
+                'Attempted to look up distribution for parameters: '
+                f'{params}, however no such distribution could be found!'
+            )
 
         # update state
         self._prev_impairment = params.impairment_lvl
