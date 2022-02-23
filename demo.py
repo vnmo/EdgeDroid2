@@ -36,6 +36,8 @@ def processing_thread_loop(ui_input_q: Deque,
     previous_t = time.monotonic()
     dt = 0
 
+    rng = np.random.default_rng()
+
     try:
         # submit initial frame to start task
         guidance = lego_task.get_current_guide_illustration()
@@ -47,7 +49,8 @@ def processing_thread_loop(ui_input_q: Deque,
         assert result == FrameResult.SUCCESS
 
         for step in range(15):
-            print(f'Target step time {step_time} seconds.')
+            print(f'Target step time {step_time:0.03f} seconds.')
+            ti = time.monotonic()
             print(lego_task.get_current_instruction())
 
             for frame in frame_model.step_iterator(target_time=step_time):
@@ -69,21 +72,27 @@ def processing_thread_loop(ui_input_q: Deque,
                 ui_guidance_q.append((guidance, msg))
 
                 result = lego_task.submit_frame(img)
-                match frame:
-                    case 'repeat':
-                        assert result == FrameResult.NO_CHANGE
-                    case 'low_confidence' | 'blank':
-                        assert result in (FrameResult.JUNK_FRAME,
-                                          FrameResult.CV_ERROR,
-                                          FrameResult.LOW_CONFIDENCE)
-                    case 'success':
-                        assert result == FrameResult.SUCCESS
-                        break
+                try:
+                    match frame:
+                        case 'repeat':
+                            assert result == FrameResult.NO_CHANGE
+                        case 'low_confidence' | 'blank':
+                            assert result in (FrameResult.JUNK_FRAME,
+                                              FrameResult.CV_ERROR,
+                                              FrameResult.LOW_CONFIDENCE)
+                        case 'success':
+                            assert result == FrameResult.SUCCESS
+                            actual_step_time = time.monotonic() - ti
+                            print(f'Finished step {step}, actual step time: '
+                                  f'{actual_step_time:0.03f} seconds')
 
-                    case _:
-                        raise RuntimeError()
+                            previous_success = img
+                            break
+                        case _:
+                            raise RuntimeError()
+                finally:
+                    time.sleep(np.abs(rng.normal(loc=0.1, scale=0.03)))
 
-            print(f'Finished step {step}')
             step_time = timing_model.get_execution_time(dt)
     finally:
         done_flag.set()
