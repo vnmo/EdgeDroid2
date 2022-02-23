@@ -6,7 +6,7 @@ from collections import deque
 from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Iterator, Sequence, Tuple, Union
+from typing import Any, Dict, Iterator, Sequence
 
 import cv2
 import nptyping as npt
@@ -209,9 +209,8 @@ class FrameModel:
 
     def step_iterator(self,
                       target_time: float,
-                      final_tag: str = 'success',
-                      _return_pos: bool = False) \
-            -> Iterator[str | Tuple[str, int]]:
+                      final_tag: str = 'success') \
+            -> Iterator[str]:
         """
         Returns
         -------
@@ -221,8 +220,7 @@ class FrameModel:
         previous_instant = 0
         delta_ts = deque()
 
-        done = False
-        while not done:
+        while True:
             instant = time.monotonic() - step_start
             delta_ts.append(instant - previous_instant)
             uncert_window = np.mean(delta_ts) + np.std(delta_ts)
@@ -246,8 +244,6 @@ class FrameModel:
                                                     final_tag=final_tag)
                 else:
                     yield final_tag
-                    done = True
             else:
                 # no remaining time left, return success tag
                 yield final_tag
-                done = True
