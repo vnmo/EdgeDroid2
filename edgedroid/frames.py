@@ -112,7 +112,9 @@ class FrameSet:
 
 
 class FrameModel:
-    def __init__(self, probabilities: pd.DataFrame):
+    def __init__(self,
+                 probabilities: pd.DataFrame,
+                 success_tag: str = 'success'):
         """
         Parameters
         ----------
@@ -154,6 +156,9 @@ class FrameModel:
             relative probability of 0.3, 'low_confidence' frames with a
             relative probability of 0.1, and 'blank' frames with a relative
             probability of 0.6.
+        success_tag
+            String to be returned by methods of this class whenever the target
+            step time has been achieved.
 
         """
 
@@ -189,8 +194,12 @@ class FrameModel:
             .set_index('interval', verify_integrity=True)
 
         self._rng = np.random.default_rng()
+        self._success_tag = success_tag
 
     def _sample_from_distribution(self, rel_pos: float) -> str:
+        if rel_pos > 1:
+            return self._success_tag
+
         probs = self._probs[self._probs.index.contains(rel_pos)].iloc[0]
         return self._rng.choice(
             a=probs.index,
@@ -200,50 +209,17 @@ class FrameModel:
 
     def get_frame_at_instant(self,
                              instant: float,
-                             step_time: float,
-                             final_tag: str = 'success') -> str:
+                             step_time: float) -> str:
         # purely according to distributions
-        rel_pos = instant / step_time
-        return self._sample_from_distribution(rel_pos) \
-            if rel_pos < 1 else final_tag
+        return self._sample_from_distribution(instant / step_time)
 
-    def step_iterator(self,
-                      target_time: float,
-                      final_tag: str = 'success') \
-            -> Iterator[str]:
+    def step_iterator(self, target_time: float) -> Iterator[str]:
         """
         Returns
         -------
         """
 
         step_start = time.monotonic()
-        previous_instant = 0
-        delta_ts = deque()
-
         while True:
-            instant = time.monotonic() - step_start
-            delta_ts.append(instant - previous_instant)
-            uncert_window = np.mean(delta_ts) + np.std(delta_ts)
-            rem_time = target_time - instant
-
-            previous_instant = instant
-
-            if uncert_window < rem_time:
-                # remaining time is more than the sum of the mean dt and the
-                # std dt, return a frame according to distribution
-                yield self.get_frame_at_instant(instant,
-                                                target_time,
-                                                final_tag=final_tag)
-            elif 0 < rem_time:
-                # remaining time is less than mean_dt + std_dt
-                # toss a coin, and choose either returning success tag
-                # or sampling from distribution
-                if self._rng.choice((True, False)):
-                    yield self.get_frame_at_instant(instant,
-                                                    target_time,
-                                                    final_tag=final_tag)
-                else:
-                    yield final_tag
-            else:
-                # no remaining time left, return success tag
-                yield final_tag
+            yield self.get_frame_at_instant(time.monotonic() - step_start,
+                                            target_time)
