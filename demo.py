@@ -48,8 +48,8 @@ def processing_thread_loop(ui_input_q: Deque,
         result = lego_task.submit_frame(previous_success)
         assert result == FrameResult.SUCCESS
 
-        for step in range(15):
-            print(f'Target step time {step_time:0.03f} seconds.')
+        for step in range(5):
+            print(f'Target execution time {step_time:0.03f} seconds.')
             ti = time.monotonic()
             print(lego_task.get_current_instruction())
 
@@ -87,6 +87,7 @@ def processing_thread_loop(ui_input_q: Deque,
                                   f'{actual_step_time:0.03f} seconds')
 
                             previous_success = img
+                            time.sleep(5)
                             break
                         case _:
                             raise RuntimeError()
