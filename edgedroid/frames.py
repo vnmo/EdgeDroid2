@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import tarfile
 import time
 from collections import deque
 from os import PathLike
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any, Dict, Iterator, Sequence, Tuple
 
-import cv2
 import nptyping as npt
 import numpy as np
 import pandas as pd
-import parse
 import yaml
 
 
@@ -58,7 +53,9 @@ class FrameSet:
         return self._steps[step_index][frame_tag].copy()
 
     @classmethod
-    def from_datafile(cls, tarfile_path: PathLike | str) -> FrameSet:
+    def from_datafile(cls,
+                      task_name: str,
+                      trace_path: PathLike | str) -> FrameSet:
         """
         Opens a frame datafile and parses it.
 
@@ -66,7 +63,9 @@ class FrameSet:
 
         Parameters
         ----------
-        tarfile_path
+        task_name
+            Task name for this trace.
+        trace_path
             Path to the datafile.
 
         Returns
@@ -74,38 +73,24 @@ class FrameSet:
 
         """
 
-        tarfile_path = Path(tarfile_path).resolve()
-        with TemporaryDirectory() as tmpdir:
-            tmpdir = Path(tmpdir).resolve()
-            with tarfile.open(tarfile_path, 'r:*') as tfile:
-                tfile.extractall(tmpdir)
+        data = np.load(trace_path)
 
-            # load metadata
-            with (tmpdir / 'metadata.yml').open('r') as fp:
-                metadata = yaml.safe_load(fp)
+        # trace NPZ file contains initial frame + 3 frames per step
+        # success, blank, and low_confidence
+        assert (len(data) - 1) % 3 == 0
+        num_steps = (len(data) - 1) // 3
 
-            # load initial frame
-            init_frame = cv2.imread(str(tmpdir / 'initial.jpeg'),
-                                    flags=cv2.IMREAD_UNCHANGED)
-
-            # load frames
-            steps = deque()
-            for step_i in range(metadata['num_steps']):
-                # open corresponding directory
-                step_dir = tmpdir / f'step_{step_i:02d}'
-                step_dict = {}
-
-                # iterate over the files
-                for frame_img in step_dir.glob('*.jpeg'):
-                    parse_res = parse.parse('{tag}.jpeg', frame_img.name)
-                    img_data = cv2.imread(str(frame_img),
-                                          flags=cv2.IMREAD_UNCHANGED)
-                    step_dict[parse_res['tag']] = img_data
-
-                steps.append(step_dict)
+        init_frame = data['initial']
+        # TODO: hardcoded categories
+        steps = deque()
+        for step in range(num_steps):
+            step_dict = {}
+            for tag in ('success', 'blank', 'low_confidence'):
+                step_dict[tag] = data[f'step{step:02d}_{tag}']
+            steps.append(step_dict)
 
         return FrameSet(
-            name=metadata['task_name'],
+            name=task_name,
             initial_frame=init_frame,
             steps=steps
         )

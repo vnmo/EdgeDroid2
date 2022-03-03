@@ -25,7 +25,7 @@ def processing_thread_loop(ui_input_q: Deque,
 
     probs = pd.read_csv('./frame_probs_per_relpos.csv')
     frame_model = FrameModel(probs)
-    frameset = FrameSet.from_datafile('./square00.tgz')
+    frameset = FrameSet.from_datafile('Square0', './square00.npz')
 
     etime_model_fact = ExecutionTimeModelFactory()
     timing_model = etime_model_fact.make_model(neuroticism=0.5, empirical=False)
@@ -48,7 +48,7 @@ def processing_thread_loop(ui_input_q: Deque,
         result = lego_task.submit_frame(previous_success)
         assert result == FrameResult.SUCCESS
 
-        for step in range(5):
+        for step in range(15):
             print(f'Target execution time {step_time:0.03f} seconds.')
             ti = time.monotonic()
             print(lego_task.get_current_instruction())
@@ -64,8 +64,6 @@ def processing_thread_loop(ui_input_q: Deque,
 
                 if frame == 'repeat':
                     img = previous_success
-                elif frame == 'low_confidence':
-                    img = frameset.get_frame(step, 'blank')
                 else:
                     img = frameset.get_frame(step, frame)
 
@@ -79,10 +77,11 @@ def processing_thread_loop(ui_input_q: Deque,
                     match frame:
                         case 'repeat':
                             assert result == FrameResult.NO_CHANGE
-                        case 'low_confidence' | 'blank':
+                        case 'low_confidence':
+                            assert result == FrameResult.LOW_CONFIDENCE
+                        case 'blank':
                             assert result in (FrameResult.JUNK_FRAME,
-                                              FrameResult.CV_ERROR,
-                                              FrameResult.LOW_CONFIDENCE)
+                                              FrameResult.CV_ERROR)
                         case 'success':
                             assert result == FrameResult.SUCCESS
                             actual_step_time = time.monotonic() - ti
@@ -90,7 +89,6 @@ def processing_thread_loop(ui_input_q: Deque,
                                   f'{actual_step_time:0.03f} seconds')
 
                             previous_success = img
-                            time.sleep(5)
                             break
                         case _:
                             raise RuntimeError()
