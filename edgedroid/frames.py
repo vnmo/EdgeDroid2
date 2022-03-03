@@ -6,7 +6,7 @@ from collections import deque
 from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, Iterator, Sequence
+from typing import Any, Dict, Iterator, Sequence, Tuple
 
 import cv2
 import nptyping as npt
@@ -213,7 +213,8 @@ class FrameModel:
         # purely according to distributions
         return self._sample_from_distribution(instant / step_time)
 
-    def step_iterator(self, target_time: float) -> Iterator[str]:
+    def step_iterator(self,
+                      target_time: float) -> Iterator[Tuple[str, float]]:
         """
         Returns
         -------
@@ -221,5 +222,5 @@ class FrameModel:
 
         step_start = time.monotonic()
         while True:
-            yield self.get_frame_at_instant(time.monotonic() - step_start,
-                                            target_time)
+            instant = time.monotonic() - step_start
+            yield self.get_frame_at_instant(instant, target_time), instant
