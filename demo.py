@@ -53,7 +53,8 @@ def processing_thread_loop(ui_input_q: Deque,
             ti = time.monotonic()
             print(lego_task.get_current_instruction())
 
-            for frame in frame_model.step_iterator(target_time=step_time):
+            for frame, instant in frame_model.step_iterator(
+                    target_time=step_time):
                 current_t = time.monotonic()
                 dt = current_t - previous_t
                 previous_t = current_t
@@ -68,7 +69,9 @@ def processing_thread_loop(ui_input_q: Deque,
                 else:
                     img = frameset.get_frame(step, frame)
 
-                ui_input_q.append((img, frame))
+                ui_input_q.append(
+                    (img, f'Tag: {frame} | '
+                          f'Time: {instant:0.03f} s / {step_time:0.03f} s'))
                 ui_guidance_q.append((guidance, msg))
 
                 result = lego_task.submit_frame(img)
