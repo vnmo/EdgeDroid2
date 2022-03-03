@@ -141,6 +141,9 @@ def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
 
     Any parameter not explicitly provided will be taken from the model defaults.
 
+    TODO: Bins should be Pandas Intervals!
+    TODO: Store intervals in output dataframe for debugging.
+
     Parameters
     ----------
     neuroticism_bins
