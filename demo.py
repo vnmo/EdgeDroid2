@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 from gabriel_lego import FrameResult, LEGOTask
 
-from edgedroid.execution_times import ExecutionTimeModelFactory
+import edgedroid.data as e_data
+from edgedroid.execution_times import TheoreticalExecutionTimeModel, \
+    preprocess_data
 from edgedroid.frames import FrameModel, FrameSet
 
 
@@ -27,12 +29,10 @@ def processing_thread_loop(ui_input_q: Deque,
     frame_model = FrameModel(probs)
     frameset = FrameSet.from_datafile('Square0', './square00.npz')
 
-    etime_model_fact = ExecutionTimeModelFactory()
-    timing_model = etime_model_fact.make_model(neuroticism=0.5, empirical=False)
+    data = preprocess_data(*e_data.load_default_exec_time_data())
+    timing_model = TheoreticalExecutionTimeModel(data=data, neuroticism=0.5)
 
     previous_success = frameset.get_initial_frame()
-
-    step_time = timing_model.get_initial_step_execution_time()
     previous_t = time.monotonic()
     dt = 0
 
@@ -47,6 +47,8 @@ def processing_thread_loop(ui_input_q: Deque,
 
         result = lego_task.submit_frame(previous_success)
         assert result == FrameResult.SUCCESS
+
+        step_time = timing_model.get_execution_time()
 
         for step in range(15):
             print(f'Target execution time {step_time:0.03f} seconds.')
@@ -95,7 +97,8 @@ def processing_thread_loop(ui_input_q: Deque,
                 finally:
                     time.sleep(np.abs(rng.normal(loc=0.1, scale=0.03)))
 
-            step_time = timing_model.get_execution_time(dt)
+            timing_model.set_delay(dt)
+            step_time = timing_model.get_execution_time()
     finally:
         done_flag.set()
 
