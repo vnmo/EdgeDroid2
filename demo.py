@@ -50,7 +50,7 @@ def processing_thread_loop(ui_input_q: Deque,
 
         step_time = timing_model.get_execution_time()
 
-        for step in range(15):
+        for step in range(30):
             print(f'Target execution time {step_time:0.03f} seconds.')
             ti = time.monotonic()
             print(lego_task.get_current_instruction())
