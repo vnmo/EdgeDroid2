@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import abc
+import enum
+from collections import deque
 from typing import Any, Generator, Iterator, NamedTuple, Optional, Sequence, \
     Tuple, Union
 
@@ -124,6 +126,95 @@ def _process_impairment(impairment: npt.NDArray[Any]) \
         impairments[i] = impairment[i - 1]
 
     return impairments[:-1], transitions[:-1], durations[:-1]
+
+
+class Transition(str, enum.Enum):
+    H2L = 'Higher2Lower'
+    L2H = 'Lower2Higher'
+    NONE = 'NoTransition'
+
+
+def new_preprocess_data(
+        exec_time_data: pd.DataFrame,
+        neuro_bins: pd.IntervalIndex,
+        impair_bins: pd.IntervalIndex,
+        duration_bins: pd.IntervalIndex
+) -> pd.DataFrame:
+    """
+    Processes a DataFrame with raw execution time data into a DataFrame
+    usable by the model.
+
+    The argument DataFrame must in order (of steps) and have the following
+    columns:
+
+    - run_id (categorical or int)
+    - neuroticism (float)
+    - exec_time (float)
+    - delay (float)
+
+    Parameters
+    ----------
+    exec_time_data
+        Raw experimental data
+    neuro_bins
+        Bins to use for neuroticism values.
+    impair_bins
+        Bins to use for delay (impairment).
+    duration_bins
+        Bins to use for sequences of same impairment.
+
+    Returns
+    -------
+        A DataFrame.
+    """
+
+    assert np.all(np.isin(exec_time_data.columns,
+                          ('run_id', 'neuroticism', 'exec_time', 'delay')))
+
+    data = exec_time_data.copy()
+    data['neuroticism'] = pd.cut(data['neuroticism'], neuro_bins)
+
+    processed_dfs = deque()
+    for run_id, df in data.groupby('run_id'):
+        df = df.copy()
+        df['next_exec_time'] = df['exec_time'].shift(-1)
+        df['impairment'] = pd.cut(df['delay'], impair_bins)
+        df['prev_impairment'] = df['impairment'].shift()
+        df['transition'] = Transition.NONE.value
+
+        # df.loc[df['prev_impairment'] > df['impairment'], 'transition'] = \
+        #     Transition.H2L.value
+
+        # for each segment with the same impairment, count the number of steps
+        # (starting from 1)
+        df['duration'] = df.groupby(
+            (df['impairment'].ne(df['prev_impairment'])).cumsum()
+        ).cumcount() + 1
+
+        def tag_transition(df: pd.DataFrame) -> pd.DataFrame:
+            result = pd.DataFrame(index=df.index, columns=['transition'])
+
+            # hack to check if first element is none
+            if df['prev_impairment'].astype(str).iloc[0] == 'nan':
+                result['transition'] = Transition.NONE.value
+            elif df['impairment'].iloc[0] > df['prev_impairment'].iloc[0]:
+                result['transition'] = Transition.L2H.value
+            else:
+                result['transition'] = Transition.H2L.value
+
+            return result
+
+        df['transition'] = df.groupby(
+            (df['impairment'].ne(df['prev_impairment'])).cumsum()
+        ).apply(tag_transition)
+
+        df = df.drop(columns=['exec_time', 'delay'])
+        processed_dfs.append(df)
+
+    data = pd.concat(processed_dfs, ignore_index=False)
+    data['transition'] = data['transition'].astype('category')
+    data['duration'] = pd.cut(data['duration'], duration_bins)
+    return data
 
 
 def preprocess_data(neuroticism_bins: np.ndarray = e_data.default_neuro_bins,
