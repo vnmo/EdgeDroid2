@@ -274,7 +274,7 @@ class FrameModel:
         Any calls to next() between instants 0 and target_time will
         correspond to frame tags sampled from the internal distributions.
         Calls to next() after a time greater than target time has been
-        elapsed will always return a success tag.
+        elapsed will always return a success tag and close the iterator.
 
         Yields
         ------
@@ -286,3 +286,5 @@ class FrameModel:
         while True:
             instant = time.monotonic() - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
+            if instant > target_time:
+                return

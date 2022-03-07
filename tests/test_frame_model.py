@@ -11,7 +11,7 @@ class TestFrameModel(unittest.TestCase):
     def setUp(self) -> None:
         # load data
         self.probs = pd.read_csv(
-            '../edgedroid/data/resources/frame_probabilitites.csv')
+            '../edgedroid/data/resources/frame_probabilities.csv')
         self.model = FrameModel(self.probs)
 
         self.probs['interval'] = pd.IntervalIndex.from_arrays(

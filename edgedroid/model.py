@@ -1,10 +1,20 @@
 import time
+from dataclasses import dataclass
 from typing import Iterator
 
 import nptyping as npt
 
 from .execution_times import ExecutionTimeModel
 from .frames import FrameModel, FrameSet
+
+
+@dataclass(frozen=True)
+class ModelFrame:
+    step_index: int
+    step_frame_time: float
+    step_target_time: float
+    frame_tag: str
+    frame_data: npt.NDArray
 
 
 class EdgeDroidModel:
@@ -39,7 +49,7 @@ class EdgeDroidModel:
     def step_count(self) -> int:
         return self._frames.step_count
 
-    def play(self) -> Iterator[npt.NDArray]:
+    def play(self) -> Iterator[ModelFrame]:
         """
         Run this model.
 
@@ -67,7 +77,13 @@ class EdgeDroidModel:
 
         # yield the initial frame of the task
         prev_success = self._frames.get_initial_frame()
-        yield prev_success
+        yield ModelFrame(
+            step_index=-1,
+            step_target_time=0,
+            step_frame_time=0,
+            frame_tag='initial',
+            frame_data=prev_success
+        )
 
         # task is now running
         for step_index in range(self._frames.step_count):
@@ -82,11 +98,29 @@ class EdgeDroidModel:
                 # FIXME: hardcoded string tags
 
                 if frame_tag == 'repeat':
-                    yield prev_success
+                    yield ModelFrame(
+                        step_index=step_index,
+                        step_frame_time=instant,
+                        step_target_time=step_duration,
+                        frame_tag=frame_tag,
+                        frame_data=prev_success
+                    )
                 elif frame_tag == 'success':
                     prev_success = self._frames.get_frame(step_index, frame_tag)
 
                     prev_step_end = time.monotonic()
-                    yield prev_success
+                    yield ModelFrame(
+                        step_index=step_index,
+                        step_frame_time=instant,
+                        step_target_time=step_duration,
+                        frame_tag=frame_tag,
+                        frame_data=prev_success
+                    )
                 else:
-                    yield self._frames.get_frame(step_index, frame_tag)
+                    yield ModelFrame(
+                        step_index=step_index,
+                        step_frame_time=instant,
+                        step_target_time=step_duration,
+                        frame_tag=frame_tag,
+                        frame_data=self._frames.get_frame(step_index, frame_tag)
+                    )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from collections import deque
 from typing import Deque
 
@@ -12,9 +11,12 @@ import pandas as pd
 from gabriel_lego import FrameResult, LEGOTask
 
 import edgedroid.data as e_data
+from edgedroid.data.load import load_default_frame_probabilities, \
+    load_default_trace
 from edgedroid.execution_times import TheoreticalExecutionTimeModel, \
     preprocess_data
-from edgedroid.frames import FrameModel, FrameSet
+from edgedroid.frames import FrameModel
+from edgedroid.model import EdgeDroidModel
 
 
 def processing_thread_loop(ui_input_q: Deque,
@@ -25,80 +27,47 @@ def processing_thread_loop(ui_input_q: Deque,
     # noinspection PyTypeChecker
     lego_task = LEGOTask(states)
 
-    probs = pd.read_csv('edgedroid/data/resources/frame_probabilitites.csv')
-    frame_model = FrameModel(probs)
-    frameset = FrameSet.from_datafile('Square0', './square00.npz')
-
+    # load data and build model
     data = preprocess_data(*e_data.load_default_exec_time_data())
     timing_model = TheoreticalExecutionTimeModel(data=data, neuroticism=0.5)
 
-    previous_success = frameset.get_initial_frame()
-    previous_t = time.monotonic()
-    dt = 0
+    frameset = load_default_trace('square00')
+    frame_model = FrameModel(load_default_frame_probabilities())
 
-    rng = np.random.default_rng()
+    edgedroid_model = EdgeDroidModel(
+        frame_trace=frameset,
+        frame_model=frame_model,
+        timing_model=timing_model
+    )
 
     try:
-        # submit initial frame to start task
-        guidance = lego_task.get_current_guide_illustration()
-        msg = lego_task.get_current_instruction()
-        ui_input_q.append((previous_success, 'initial'))
-        ui_guidance_q.append((guidance, msg))
+        for model_frame in edgedroid_model.play():
+            guidance = lego_task.get_current_guide_illustration()
+            msg = lego_task.get_current_instruction()
+            ui_guidance_q.append((guidance, msg))
+            ui_input_q.append(
+                (model_frame.frame_data,
+                 f'Tag: {model_frame.frame_tag} | '
+                 f'Time: {model_frame.step_frame_time:0.03f} s /'
+                 f' {model_frame.step_target_time:0.03f} s'))
+            ui_guidance_q.append((guidance, msg))
 
-        result = lego_task.submit_frame(previous_success)
-        assert result == FrameResult.SUCCESS
-
-        step_time = timing_model.get_execution_time()
-
-        for step in range(30):
-            print(f'Target execution time {step_time:0.03f} seconds.')
-            ti = time.monotonic()
-            print(lego_task.get_current_instruction())
-
-            for frame, instant in frame_model.step_iterator(
-                    target_time=step_time):
-                current_t = time.monotonic()
-                dt = current_t - previous_t
-                previous_t = current_t
-
-                guidance = lego_task.get_current_guide_illustration()
-                msg = lego_task.get_current_instruction()
-
-                if frame == 'repeat':
-                    img = previous_success
-                else:
-                    img = frameset.get_frame(step, frame)
-
-                ui_input_q.append(
-                    (img, f'Tag: {frame} | '
-                          f'Time: {instant:0.03f} s / {step_time:0.03f} s'))
-                ui_guidance_q.append((guidance, msg))
-
-                result = lego_task.submit_frame(img)
-                try:
-                    match frame:
-                        case 'repeat':
-                            assert result == FrameResult.NO_CHANGE
-                        case 'low_confidence':
-                            assert result == FrameResult.LOW_CONFIDENCE
-                        case 'blank':
-                            assert result in (FrameResult.JUNK_FRAME,
-                                              FrameResult.CV_ERROR)
-                        case 'success':
-                            assert result == FrameResult.SUCCESS
-                            actual_step_time = time.monotonic() - ti
-                            print(f'Finished step {step}, actual step time: '
-                                  f'{actual_step_time:0.03f} seconds')
-
-                            previous_success = img
-                            break
-                        case _:
-                            raise RuntimeError()
-                finally:
-                    time.sleep(np.abs(rng.normal(loc=0.1, scale=0.03)))
-
-            timing_model.set_delay(dt)
-            step_time = timing_model.get_execution_time()
+            result = lego_task.submit_frame(model_frame.frame_data)
+            match model_frame.frame_tag:
+                case 'repeat':
+                    assert result == FrameResult.NO_CHANGE
+                case 'low_confidence':
+                    assert result == FrameResult.LOW_CONFIDENCE
+                case 'blank':
+                    assert result in (FrameResult.JUNK_FRAME,
+                                      FrameResult.CV_ERROR)
+                case 'success' | 'initial':
+                    assert result == FrameResult.SUCCESS
+                case _:
+                    raise RuntimeError()
+    except AssertionError:
+        print(result)
+        raise
     finally:
         done_flag.set()
 
