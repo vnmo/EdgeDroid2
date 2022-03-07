@@ -129,12 +129,20 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def set_delay(self, delay: float | int) -> None:
+        """
+        Update the internal delay of this model.
+
+        Parameters
+        ----------
+        delay
+            A delay expressed in seconds.
+        """
         pass
 
     @abc.abstractmethod
     def get_execution_time(self) -> float:
         """
-        Obtain an execution time for a step N, N > 1.
+        Obtain an execution time from this model.
 
         Returns
         -------
@@ -146,15 +154,19 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def state_info(self) -> Dict[str, Any]:
         """
-        TODO: document
         Returns
         -------
-
+        dict
+            A dictionary containing debugging information about the internal
+            stated of this model.
         """
         pass
 
     @abc.abstractmethod
     def reset(self) -> None:
+        """
+        Resets the internal state to the starting state.
+        """
         pass
 
 
@@ -168,10 +180,13 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
                  data: pd.DataFrame,
                  neuroticism: float):
         """
-        TODO: document
-
         Parameters
         ----------
+        data
+            A pd.DataFrame containing appropriate columns. Such a DataFrame
+            can be obtained through the preprocess_data function in this module.
+        neuroticism
+            A normalized value of neuroticism for this model.
         """
 
         super().__init__()
@@ -266,18 +281,16 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
                  neuroticism: float,
                  distribution: stats.rv_continuous = stats.exponnorm):
         """
-        TODO: document
-
         Parameters
         ----------
         data
-            A DataFrame indexed with pairs of (run/subject id, step sequence
-            number) and with columns `prev_impairment`, `prev_duration`,
-            and `transition`. Such as DataFrame can be obtained from the
-            preprocess_data() function.
+            A pd.DataFrame containing appropriate columns. Such a DataFrame
+            can be obtained through the preprocess_data function in this module.
+        neuroticism
+            A normalized value of neuroticism for this model.
         distribution
             An scipy.stats.rv_continuous object corresponding to the
-            distribution to fit to the empirical data. By default it
+            distribution to fit to the empirical data. By default, it
             corresponds to the Exponentially Modified Gaussian.
         """
 

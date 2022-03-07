@@ -12,10 +12,32 @@ import yaml
 
 
 class FrameSet:
+    """
+    Abstraction of a set of video frames for the model.
+
+    Easiest way to build an instance of this class is using the
+    FrameSet.from_datafile class method. This method takes a tracefile in
+    .npz format and parses it.
+    """
+
     def __init__(self,
                  name: str,
                  initial_frame: npt.NDArray,
                  steps: Sequence[Dict[str, npt.NDArray]]):
+        """
+        Parameters
+        ----------
+        name
+            A name for the task represented by this trace of frames.
+        initial_frame
+            The initial video frame required by the backend to initialize
+            the task.
+        steps
+            A sequence containing dictionaries mapping frame tags to video
+            frames, in order of steps.
+            Note that it is expected that all steps have the same tags!
+        """
+
         self._name = name
         self._init_frame = initial_frame
         self._steps = tuple(steps)
@@ -45,11 +67,32 @@ class FrameSet:
         return self._name
 
     def get_initial_frame(self) -> npt.NDArray:
+        """
+        Returns
+        -------
+        npt.NDArray
+            The initial video frame for this task.
+        """
         return self._init_frame.copy()
 
     def get_frame(self,
                   step_index: Any,
                   frame_tag: str) -> npt.NDArray:
+        """
+        Looks up a frame for a specific tag in a step.
+
+        Parameters
+        ----------
+        step_index
+            Step index.
+        frame_tag
+            Frame tag to look up.
+
+        Returns
+        -------
+        npt.NDArray
+            A video frame.
+        """
         return self._steps[step_index][frame_tag].copy()
 
     @classmethod
@@ -57,9 +100,18 @@ class FrameSet:
                       task_name: str,
                       trace_path: PathLike | str) -> FrameSet:
         """
-        Opens a frame datafile and parses it.
+        Opens a frame tracefile and parses it.
 
-        TODO: Add specification on frame datafiles.
+        Traces correspond to compressed numpy array files (.npz) containing
+        the following arrays:
+
+            - An array called "initial" corresponding to the initial frame for
+              the task.
+            - A number `M x N` of arrays, where M is the number of different
+              possible tags for frames during a step, and N corresponds to
+              the number of steps in the tag. Each of these arrays is named
+              following the convention "step_<step index (two digits,
+              0-padded)>_<frame tag>".
 
         Parameters
         ----------
@@ -70,7 +122,8 @@ class FrameSet:
 
         Returns
         -------
-
+        FrameSet
+            A FrameSet object.
         """
 
         data = np.load(trace_path)
@@ -193,16 +246,40 @@ class FrameModel:
         )
 
     def get_frame_at_instant(self,
-                             instant: float,
-                             step_time: float) -> str:
+                             instant: float | int,
+                             step_time: float | int) -> str:
+        """
+        Return a frame sampled from a specific instant in a step.
+
+        Parameters
+        ----------
+        instant
+            Number of seconds since the start of the step.
+        step_time
+            Total target step duration.
+
+        Returns
+        -------
+        str
+            A randomly sampled step tag.
+        """
+
         # purely according to distributions
-        return self._sample_from_distribution(instant / step_time)
+        return self._sample_from_distribution(float(instant) / float(step_time))
 
     def step_iterator(self,
                       target_time: float) -> Iterator[Tuple[str, float]]:
         """
-        Returns
-        -------
+        An infinite iterator over the frame tags in a step.
+        Any calls to next() between instants 0 and target_time will
+        correspond to frame tags sampled from the internal distributions.
+        Calls to next() after a time greater than target time has been
+        elapsed will always return a success tag.
+
+        Yields
+        ------
+        str
+            Frame tags.
         """
 
         step_start = time.monotonic()
