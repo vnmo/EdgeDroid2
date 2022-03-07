@@ -8,10 +8,27 @@ from .frames import FrameModel, FrameSet
 
 
 class EdgeDroidModel:
+    """
+    Implements the full end-to-end emulation of a human user in Cognitive
+    Assistance.
+    """
+
     def __init__(self,
                  frame_trace: FrameSet,
                  timing_model: ExecutionTimeModel,
                  frame_model: FrameModel):
+        """
+        Parameters
+        ----------
+        frame_trace
+            A FrameSet object containing the video frame trace for the
+            target task.
+        timing_model
+            An ExecutionTimeModel object to provide the timing information.
+        frame_model
+            A FrameModel object to provide frame distribution information at
+            runtime.
+        """
         super(EdgeDroidModel, self).__init__()
 
         self._timings = timing_model
@@ -23,6 +40,27 @@ class EdgeDroidModel:
         return self._frames.step_count
 
     def play(self) -> Iterator[npt.NDArray]:
+        """
+        Run this model.
+
+        This function returns an iterator yielding video frames for each
+        instant in the emulation. Example usage::
+
+            model = EdgeDroidModel(...)
+            for frame in model.play():
+                result = send_frame_to_backend(frame)
+                ...
+
+
+        This iterator maintains an internal state of the task and
+        automatically produces realistic frames and timings.
+
+        Returns
+        -------
+        Iterator
+            An Iterator that yields appropriate video frames as numpy arrays.
+        """
+
         self._timings.reset()
 
         prev_step_end = time.monotonic()
