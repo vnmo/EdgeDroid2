@@ -10,7 +10,8 @@ from edgedroid.frames import FrameModel
 class TestFrameModel(unittest.TestCase):
     def setUp(self) -> None:
         # load data
-        self.probs = pd.read_csv('../frame_probs_per_relpos.csv')
+        self.probs = pd.read_csv(
+            '../edgedroid/data/resources/frame_probabilitites.csv')
         self.model = FrameModel(self.probs)
 
         self.probs['interval'] = pd.IntervalIndex.from_arrays(

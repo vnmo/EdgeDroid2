@@ -25,7 +25,7 @@ def processing_thread_loop(ui_input_q: Deque,
     # noinspection PyTypeChecker
     lego_task = LEGOTask(states)
 
-    probs = pd.read_csv('./frame_probs_per_relpos.csv')
+    probs = pd.read_csv('edgedroid/data/resources/frame_probabilitites.csv')
     frame_model = FrameModel(probs)
     frameset = FrameSet.from_datafile('Square0', './square00.npz')
 
