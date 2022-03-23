@@ -16,20 +16,21 @@ class ModelException(Exception):
     """
     Exception raised during model execution.
     """
+
     pass
 
 
 class Transition(str, enum.Enum):
-    H2L = 'Higher2Lower'
-    L2H = 'Lower2Higher'
-    NONE = 'NoTransition'
+    H2L = "Higher2Lower"
+    L2H = "Lower2Higher"
+    NONE = "NoTransition"
 
 
 def preprocess_data(
-        exec_time_data: pd.DataFrame,
-        neuro_bins: arrays.IntervalArray | pd.IntervalIndex,
-        impair_bins: arrays.IntervalArray | pd.IntervalIndex,
-        duration_bins: arrays.IntervalArray | pd.IntervalIndex
+    exec_time_data: pd.DataFrame,
+    neuro_bins: arrays.IntervalArray | pd.IntervalIndex,
+    impair_bins: arrays.IntervalArray | pd.IntervalIndex,
+    duration_bins: arrays.IntervalArray | pd.IntervalIndex,
 ) -> pd.DataFrame:
     """
     Processes a DataFrame with raw execution time data into a DataFrame
@@ -59,57 +60,58 @@ def preprocess_data(
         A DataFrame.
     """
 
-    assert np.all(np.isin(exec_time_data.columns,
-                          ('run_id', 'neuroticism', 'exec_time', 'delay')))
+    assert np.all(
+        np.isin(exec_time_data.columns, ("run_id", "neuroticism", "exec_time", "delay"))
+    )
 
     data = exec_time_data.copy()
-    data['neuroticism'] = pd.cut(data['neuroticism'],
-                                 pd.IntervalIndex(neuro_bins))
+    data["neuroticism"] = pd.cut(data["neuroticism"], pd.IntervalIndex(neuro_bins))
 
     processed_dfs = deque()
-    for run_id, df in data.groupby('run_id'):
+    for run_id, df in data.groupby("run_id"):
         df = df.copy()
-        df['next_exec_time'] = df['exec_time'].shift(-1)
-        df['impairment'] = pd.cut(df['delay'], pd.IntervalIndex(impair_bins))
-        df['prev_impairment'] = df['impairment'].shift()
-        df['transition'] = Transition.NONE.value
+        df["next_exec_time"] = df["exec_time"].shift(-1)
+        df["impairment"] = pd.cut(df["delay"], pd.IntervalIndex(impair_bins))
+        df["prev_impairment"] = df["impairment"].shift()
+        df["transition"] = Transition.NONE.value
 
         # for each segment with the same impairment, count the number of steps
         # (starting from 1)
-        df['duration'] = df.groupby(
-            (df['impairment'].ne(df['prev_impairment'])).cumsum()
-        ).cumcount() + 1
+        df["duration"] = (
+            df.groupby((df["impairment"].ne(df["prev_impairment"])).cumsum()).cumcount()
+            + 1
+        )
 
         def tag_transition(df: pd.DataFrame) -> pd.DataFrame:
-            result = pd.DataFrame(index=df.index, columns=['transition'])
+            result = pd.DataFrame(index=df.index, columns=["transition"])
 
             # hack to check if first element is none
-            if df['prev_impairment'].astype(str).iloc[0] == 'nan':
-                result['transition'] = Transition.NONE.value
-            elif df['impairment'].iloc[0] > df['prev_impairment'].iloc[0]:
-                result['transition'] = Transition.L2H.value
+            if df["prev_impairment"].astype(str).iloc[0] == "nan":
+                result["transition"] = Transition.NONE.value
+            elif df["impairment"].iloc[0] > df["prev_impairment"].iloc[0]:
+                result["transition"] = Transition.L2H.value
             else:
-                result['transition'] = Transition.H2L.value
+                result["transition"] = Transition.H2L.value
 
             return result
 
-        df['transition'] = df.groupby(
-            (df['impairment'].ne(df['prev_impairment'])).cumsum()
+        df["transition"] = df.groupby(
+            (df["impairment"].ne(df["prev_impairment"])).cumsum()
         ).apply(tag_transition)
 
-        df = df.drop(columns=['exec_time', 'delay'])
+        df = df.drop(columns=["exec_time", "delay"])
         processed_dfs.append(df)
 
     data = pd.concat(processed_dfs, ignore_index=False)
 
     # coerce some types for proper functionality
-    data['transition'] = data['transition'].astype('category')
-    data['neuroticism'] = data['neuroticism'].astype(pd.IntervalDtype())
-    data['impairment'] = data['impairment'].astype(pd.IntervalDtype())
-    data['duration'] = pd.cut(data['duration'],
-                              pd.IntervalIndex(duration_bins)) \
-        .astype(pd.IntervalDtype())
-    data = data.drop(columns='prev_impairment')
+    data["transition"] = data["transition"].astype("category")
+    data["neuroticism"] = data["neuroticism"].astype(pd.IntervalDtype())
+    data["impairment"] = data["impairment"].astype(pd.IntervalDtype())
+    data["duration"] = pd.cut(data["duration"], pd.IntervalIndex(duration_bins)).astype(
+        pd.IntervalDtype()
+    )
+    data = data.drop(columns="prev_impairment")
 
     return data
 
@@ -176,9 +178,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     sampled from the empirical distributions of the underlying data.
     """
 
-    def __init__(self,
-                 data: pd.DataFrame,
-                 neuroticism: float):
+    def __init__(self, data: pd.DataFrame, neuroticism: float):
         """
         Parameters
         ----------
@@ -191,19 +191,20 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
         super().__init__()
         # first, we filter on neuroticism
-        data = data[data['neuroticism'].array.contains(neuroticism)]
+        data = data[data["neuroticism"].array.contains(neuroticism)]
 
         # next, prepare views
-        self._data_views = data.groupby(
-            ['impairment', 'duration', 'transition'],
-            observed=True, dropna=True
-        )['next_exec_time'].apply(
-            lambda e: np.array(e.dropna(), dtype=np.float64)
-        ).to_dict()
+        self._data_views = (
+            data.groupby(
+                ["impairment", "duration", "transition"], observed=True, dropna=True
+            )["next_exec_time"]
+            .apply(lambda e: np.array(e.dropna(), dtype=np.float64))
+            .to_dict()
+        )
 
         # unique bins (interval arrays)
-        self._duration_bins = data['duration'].unique()
-        self._impairment_bins = data['impairment'].unique()
+        self._duration_bins = data["duration"].unique()
+        self._impairment_bins = data["impairment"].unique()
 
         # initial state
         self._duration = 0
@@ -221,15 +222,11 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._binned_duration = self._duration_bins[
             self._duration_bins.contains(self._duration)
         ][0]
-        self._impairment = self._impairment_bins[
-            self._impairment_bins.contains(0)
-        ][0]
+        self._impairment = self._impairment_bins[self._impairment_bins.contains(0)][0]
         self._transition = Transition.NONE
 
     def set_delay(self, delay: float | int) -> None:
-        new_impairment = self._impairment_bins[
-            self._impairment_bins.contains(delay)
-        ][0]
+        new_impairment = self._impairment_bins[self._impairment_bins.contains(delay)][0]
 
         if new_impairment > self._impairment:
             self._transition = Transition.L2H
@@ -249,24 +246,20 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         # get the appropriate data view
         try:
             data: npt.NDArray = self._data_views[
-                (self._impairment,
-                 self._binned_duration,
-                 self._transition.value)
+                (self._impairment, self._binned_duration, self._transition.value)
             ]
         except KeyError:
-            raise ModelException(
-                f'No data for model state: {self.state_info()}!'
-            )
+            raise ModelException(f"No data for model state: {self.state_info()}!")
 
         # finally, sample from the data and return an execution time in seconds
         return self._rng.choice(data, replace=False)
 
     def state_info(self) -> Dict[str, Any]:
         return {
-            'latest impairment'        : self._impairment,
-            'latest transition'        : self._transition.value,
-            'current duration'         : self._duration,
-            'current duration (binned)': self._binned_duration
+            "latest impairment": self._impairment,
+            "latest transition": self._transition.value,
+            "current duration": self._duration,
+            "current duration (binned)": self._binned_duration,
         }
 
 
@@ -276,10 +269,12 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     sampled from theoretical distributions fitted to the underlying data.
     """
 
-    def __init__(self,
-                 data: pd.DataFrame,
-                 neuroticism: float,
-                 distribution: stats.rv_continuous = stats.exponnorm):
+    def __init__(
+        self,
+        data: pd.DataFrame,
+        neuroticism: float,
+        distribution: stats.rv_continuous = stats.exponnorm,
+    ):
         """
         Parameters
         ----------
@@ -294,8 +289,7 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             corresponds to the Exponentially Modified Gaussian.
         """
 
-        super(TheoreticalExecutionTimeModel, self).__init__(data,
-                                                            neuroticism)
+        super(TheoreticalExecutionTimeModel, self).__init__(data, neuroticism)
 
         # at this point, the views have been populated with data according to
         # the binnings
@@ -305,21 +299,16 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         for imp_dur_trans, exec_times in self._data_views.items():
             # get the execution times, then fit the distribution to the samples
             k, loc, scale = distribution.fit(exec_times)
-            self._dists[imp_dur_trans] = \
-                distribution.freeze(loc=loc, scale=scale, K=k)
+            self._dists[imp_dur_trans] = distribution.freeze(loc=loc, scale=scale, K=k)
 
     def get_execution_time(self) -> float:
         # get the appropriate distribution
         try:
             dist = self._dists[
-                (self._impairment,
-                 self._binned_duration,
-                 self._transition.value)
+                (self._impairment, self._binned_duration, self._transition.value)
             ]
         except KeyError:
-            raise ModelException(
-                f'No data for model state: {self.state_info()}!'
-            )
+            raise ModelException(f"No data for model state: {self.state_info()}!")
 
         # finally, sample from the dist and return an execution time in seconds
         return dist.rvs()

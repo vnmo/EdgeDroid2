@@ -7,10 +7,15 @@ import numpy as np
 import pandas as pd
 
 from edgedroid.data import load_default_exec_time_data
-from edgedroid.execution_times import Binner, ExecutionTimeModelFactory, \
-    ModelException, _EmpiricalExecutionTimeModel, \
-    _TheoreticalExecutionTimeModel, \
-    _process_impairment, preprocess_data
+from edgedroid.execution_times import (
+    Binner,
+    ExecutionTimeModelFactory,
+    ModelException,
+    _EmpiricalExecutionTimeModel,
+    _TheoreticalExecutionTimeModel,
+    _process_impairment,
+    preprocess_data,
+)
 
 
 class TestDataPreprocessing(TestCase):
@@ -25,124 +30,111 @@ class TestDataPreprocessing(TestCase):
         # impairment)
 
         impairment_test_low = {
-            'impairment'     : np.array([
-                0, 0, 2, 2, 2, 0, 0, 3, 0, 0, 1, 1
-            ]),
-            'proc_impairment': np.array([
-                0, 0, 0, 2, 2, 2, 0, 0, 3, 0, 0, 1
-            ]),
-            'transition'     : np.array([
-                0, 0, 0, 1, 1, 1, -1, -1, 1, -1, -1, 1
-            ]),
-            'duration'       : np.array([
-                -1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1
-            ])
+            "impairment": np.array([0, 0, 2, 2, 2, 0, 0, 3, 0, 0, 1, 1]),
+            "proc_impairment": np.array([0, 0, 0, 2, 2, 2, 0, 0, 3, 0, 0, 1]),
+            "transition": np.array([0, 0, 0, 1, 1, 1, -1, -1, 1, -1, -1, 1]),
+            "duration": np.array([-1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1]),
         }
 
         impairment_test_high = {
-            'impairment'     : np.array([
-                2, 2, 1, 1, 1, 0, 0, 3, 0, 0, 1, 1
-            ]),
-            'proc_impairment': np.array([
-                0, 2, 2, 1, 1, 1, 0, 0, 3, 0, 0, 1
-            ]),
-            'transition'     : np.array([
-                0, 1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1
-            ]),
-            'duration'       : np.array([
-                -1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1
-            ])
+            "impairment": np.array([2, 2, 1, 1, 1, 0, 0, 3, 0, 0, 1, 1]),
+            "proc_impairment": np.array([0, 2, 2, 1, 1, 1, 0, 0, 3, 0, 0, 1]),
+            "transition": np.array([0, 1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1]),
+            "duration": np.array([-1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 2, 1]),
         }
 
         for imp_test in (impairment_test_low, impairment_test_high):
             proc_imp, prev_trans, prev_dur = _process_impairment(
-                impairment=imp_test['impairment'])
+                impairment=imp_test["impairment"]
+            )
 
             np.testing.assert_array_equal(
-                imp_test['proc_impairment'],
+                imp_test["proc_impairment"],
                 proc_imp,
-                err_msg=f'Processed impairments don\'t'
-                        f' match!\n{imp_test["impairment"]=}'
+                err_msg=f"Processed impairments don't"
+                f' match!\n{imp_test["impairment"]=}',
             )
 
             np.testing.assert_array_equal(
-                imp_test['transition'],
+                imp_test["transition"],
                 prev_trans,
-                err_msg=f'Processed transitions don\'t'
-                        f' match!\n{imp_test["impairment"]=}'
+                err_msg=f"Processed transitions don't"
+                f' match!\n{imp_test["impairment"]=}',
             )
 
             np.testing.assert_array_equal(
-                imp_test['duration'],
+                imp_test["duration"],
                 prev_dur,
-                err_msg=f'Processed durations don\'t'
-                        f' match!\n{imp_test["impairment"]=}'
+                err_msg=f"Processed durations don't"
+                f' match!\n{imp_test["impairment"]=}',
             )
 
     def test_preprocess_data(self) -> None:
-        test_data = pd.DataFrame({
-            'run_id'     : [1, 1, 1, 1, 1, 1],
-            'neuroticism': [0.5, 1.5, 2.5, 0.5, 1.5, 2.5],
-            'step_seq'   : [1, 2, 3, 4, 5, 6],
-            'exec_time'  : [1, 1, 2, 2, 3, 3],
-            'delay'      : [1.5, 0.5, 0.5, 0.5, 2.5, 2.5],
-        })
+        test_data = pd.DataFrame(
+            {
+                "run_id": [1, 1, 1, 1, 1, 1],
+                "neuroticism": [0.5, 1.5, 2.5, 0.5, 1.5, 2.5],
+                "step_seq": [1, 2, 3, 4, 5, 6],
+                "exec_time": [1, 1, 2, 2, 3, 3],
+                "delay": [1.5, 0.5, 0.5, 0.5, 2.5, 2.5],
+            }
+        )
 
-        exp_data = pd.DataFrame({
-            'run_id'         : [1, 1, 1, 1, 1, 1],
-            'step_seq'       : [1, 2, 3, 4, 5, 6],
-            'exec_time'      : [1, 1, 2, 2, 3, 3],
-            'neuroticism'    : [0, 1, 2, 0, 1, 2],
-            'prev_impairment': [0, 1, 0, 0, 0, 2],
-            'prev_duration'  : [-1, 0, 0, 0, 1, 0],
-            'transition'     : [0, 1, -1, -1, -1, 1]
-        })
+        exp_data = pd.DataFrame(
+            {
+                "run_id": [1, 1, 1, 1, 1, 1],
+                "step_seq": [1, 2, 3, 4, 5, 6],
+                "exec_time": [1, 1, 2, 2, 3, 3],
+                "neuroticism": [0, 1, 2, 0, 1, 2],
+                "prev_impairment": [0, 1, 0, 0, 0, 2],
+                "prev_duration": [-1, 0, 0, 0, 1, 0],
+                "transition": [0, 1, -1, -1, -1, 1],
+            }
+        )
 
         neuro_bins = np.array([-np.inf, 1, 2, np.inf])
         delay_bins = np.array([-np.inf, 1, 2, np.inf])
         duration_bins = np.array([0, 2, np.inf])
 
-        test_data = test_data.set_index(['run_id', 'step_seq'],
-                                        verify_integrity=True)
-        exp_data = exp_data.set_index(['run_id', 'step_seq'],
-                                      verify_integrity=True)
+        test_data = test_data.set_index(["run_id", "step_seq"], verify_integrity=True)
+        exp_data = exp_data.set_index(["run_id", "step_seq"], verify_integrity=True)
 
         result = preprocess_data(
             neuroticism_bins=neuro_bins,
             impairment_bins=delay_bins,
             duration_bins=duration_bins,
-            execution_time_data=test_data
+            execution_time_data=test_data,
         )
 
-        pd.testing.assert_frame_equal(result.data, exp_data,
-                                      check_dtype=False)
+        pd.testing.assert_frame_equal(result.data, exp_data, check_dtype=False)
 
         # very simple, multi-run test
         test_data_d = deque()
         exp_data_d = deque()
         for i in range(40):
             test_df = test_data.copy().reset_index()
-            test_df['run_id'] = i
+            test_df["run_id"] = i
             test_data_d.append(test_df)
 
             exp_df = exp_data.copy().reset_index()
-            exp_df['run_id'] = i
+            exp_df["run_id"] = i
             exp_data_d.append(exp_df)
 
-        test_data = pd.concat(test_data_d, ignore_index=True) \
-            .set_index(['run_id', 'step_seq'], verify_integrity=True)
-        exp_data = pd.concat(exp_data_d, ignore_index=True) \
-            .set_index(['run_id', 'step_seq'], verify_integrity=True)
+        test_data = pd.concat(test_data_d, ignore_index=True).set_index(
+            ["run_id", "step_seq"], verify_integrity=True
+        )
+        exp_data = pd.concat(exp_data_d, ignore_index=True).set_index(
+            ["run_id", "step_seq"], verify_integrity=True
+        )
 
         result = preprocess_data(
             neuroticism_bins=neuro_bins,
             impairment_bins=delay_bins,
             duration_bins=duration_bins,
-            execution_time_data=test_data
+            execution_time_data=test_data,
         )
 
-        pd.testing.assert_frame_equal(result.data, exp_data,
-                                      check_dtype=False)
+        pd.testing.assert_frame_equal(result.data, exp_data, check_dtype=False)
 
     def test_binner(self) -> None:
         # test the Binner class
@@ -175,10 +167,7 @@ class TestDataPreprocessing(TestCase):
         with self.assertRaises(Binner.BinningError):
             binner.bin(np.linspace(start=3.1, stop=10, num=50))
 
-        np.testing.assert_array_equal(
-            binner.bin([1.5, 2.5, 3]),
-            [0, 1, 1]
-        )
+        np.testing.assert_array_equal(binner.bin([1.5, 2.5, 3]), [0, 1, 1])
 
 
 class TestModels(TestCase):
@@ -204,13 +193,12 @@ class TestModels(TestCase):
         # tests for the model iterator util
         # data = preprocess_data()
 
-        for model_cls in (_EmpiricalExecutionTimeModel,
-                          _TheoreticalExecutionTimeModel):
+        for model_cls in (_EmpiricalExecutionTimeModel, _TheoreticalExecutionTimeModel):
             model = model_cls(
                 data=self.proc_data.data.copy(),
                 neuro_level=0,
                 impair_binner=self.proc_data.impairment_binner,
-                dur_binner=self.proc_data.duration_binner
+                dur_binner=self.proc_data.duration_binner,
             )
 
             it = model.execution_time_iterator()
@@ -232,15 +220,14 @@ class TestModels(TestCase):
         # all bins are single
         # all data extracted from the model should come from the participant
 
-        data = self.raw_data.xs(self.rng.choice(self.run_ids),
-                                drop_level=False).copy()
+        data = self.raw_data.xs(self.rng.choice(self.run_ids), drop_level=False).copy()
         self.assertEqual(len(data.neuroticism.unique()), 1)
 
         proc_data = preprocess_data(
             execution_time_data=data,
             neuroticism_bins=np.array([-np.inf, np.inf]),
             impairment_bins=np.array([-np.inf, np.inf]),
-            duration_bins=np.array([0, np.inf])
+            duration_bins=np.array([0, np.inf]),
         )
         proc_df = proc_data.data
 
@@ -253,12 +240,13 @@ class TestModels(TestCase):
             data=proc_df,
             neuro_level=0,
             impair_binner=proc_data.impairment_binner,
-            dur_binner=proc_data.duration_binner
+            dur_binner=proc_data.duration_binner,
         )
 
         # sample for first step should correspond to value for initial row
-        np.testing.assert_almost_equal(model.get_initial_step_execution_time(),
-                                       data.exec_time.values[0])
+        np.testing.assert_almost_equal(
+            model.get_initial_step_execution_time(), data.exec_time.values[0]
+        )
 
         # delay for initial step
         delay = data.delay.values[0]
@@ -266,10 +254,9 @@ class TestModels(TestCase):
         # execution times obtained after the first step
         # should always be taken from the collection of steps where N > 1
         data = data.iloc[1:]
-        for step in data.itertuples(name='Step'):
+        for step in data.itertuples(name="Step"):
             exec_time = model.get_execution_time(delay)  # use previous delay
-            self.assertTrue(np.any(
-                np.isclose(exec_time, data.exec_time.values)))
+            self.assertTrue(np.any(np.isclose(exec_time, data.exec_time.values)))
 
             # update delay at end of loop, always
             delay = step.delay
@@ -284,8 +271,7 @@ class TestModels(TestCase):
         # time from the experiments
 
         # grab a random participant
-        data = self.raw_data.xs(self.rng.choice(self.run_ids),
-                                drop_level=False).copy()
+        data = self.raw_data.xs(self.rng.choice(self.run_ids), drop_level=False).copy()
         self.assertEqual(len(data.neuroticism.unique()), 1)
 
         # all bins are single EXCEPT DURATION
@@ -302,32 +288,32 @@ class TestModels(TestCase):
             execution_time_data=data,
             neuroticism_bins=np.array([-np.inf, np.inf]),
             impairment_bins=np.array([-np.inf, np.inf]),
-            duration_bins=dur_bins
+            duration_bins=dur_bins,
         )
         proc_df = proc_data.data
 
         np.testing.assert_array_equal(proc_df.neuroticism.unique(), [0])
         np.testing.assert_array_equal(proc_df.prev_impairment.unique(), [0])
         np.testing.assert_array_equal(proc_df.transition.unique(), [0])
-        np.testing.assert_array_equal(proc_df.prev_duration.unique(),
-                                      np.concatenate(([-1],
-                                                      np.arange(0, 167))))
+        np.testing.assert_array_equal(
+            proc_df.prev_duration.unique(), np.concatenate(([-1], np.arange(0, 167)))
+        )
 
         model = _EmpiricalExecutionTimeModel(
             data=proc_df,
             neuro_level=0,
             impair_binner=proc_data.impairment_binner,
-            dur_binner=proc_data.duration_binner
+            dur_binner=proc_data.duration_binner,
         )
 
         prev_step: Any = None
-        for i, step in enumerate(data.itertuples(name='Step')):
+        for i, step in enumerate(data.itertuples(name="Step")):
             if i == 0:
                 # sample for first step should
                 # correspond to value for initial row
                 np.testing.assert_almost_equal(
-                    model.get_initial_step_execution_time(),
-                    data.exec_time.values[i])
+                    model.get_initial_step_execution_time(), data.exec_time.values[i]
+                )
             else:
                 # use previous delay
                 exec_time = model.get_execution_time(prev_step.delay)
@@ -335,10 +321,7 @@ class TestModels(TestCase):
                 # since duration is binned in such a way that each steps gets
                 # its own bin, the sampled value here should always
                 # correspond to the execution time of the current step
-                self.assertTrue(np.isclose(
-                    exec_time,
-                    step.exec_time
-                ))
+                self.assertTrue(np.isclose(exec_time, step.exec_time))
 
             # save step
             prev_step = step
@@ -358,20 +341,22 @@ class TestModels(TestCase):
         # we set first step impairment to low
         # second step for the the low-to-high transitions and high impairment
         # third step for the high-to-low transition
-        test_data = pd.DataFrame({
-            'run_id'     : [0, 0, 0],
-            'step_seq'   : [1, 2, 3],
-            'exec_time'  : [1, 2, 3],
-            'neuroticism': [0, 0, 0],
-            'delay'      : [2, 1, 2]
-        }).set_index(['run_id', 'step_seq'], verify_integrity=True)
+        test_data = pd.DataFrame(
+            {
+                "run_id": [0, 0, 0],
+                "step_seq": [1, 2, 3],
+                "exec_time": [1, 2, 3],
+                "neuroticism": [0, 0, 0],
+                "delay": [2, 1, 2],
+            }
+        ).set_index(["run_id", "step_seq"], verify_integrity=True)
 
         delay_bins = np.array([-np.inf, 1.5, np.inf])
         proc_data = preprocess_data(
             execution_time_data=test_data,
             neuroticism_bins=np.array([-np.inf, np.inf]),
             impairment_bins=delay_bins,
-            duration_bins=np.array([0, np.inf])
+            duration_bins=np.array([0, np.inf]),
         )
         proc_df = proc_data.data
 
@@ -384,22 +369,21 @@ class TestModels(TestCase):
             data=proc_df,
             neuro_level=0,
             impair_binner=proc_data.impairment_binner,
-            dur_binner=proc_data.duration_binner
+            dur_binner=proc_data.duration_binner,
         )
 
         # step 1 should have a different distribution
         # sample for first step should correspond to value for initial row
-        np.testing.assert_almost_equal(model.get_initial_step_execution_time(),
-                                       test_data.exec_time.values[0])
+        np.testing.assert_almost_equal(
+            model.get_initial_step_execution_time(), test_data.exec_time.values[0]
+        )
         step1_delay = test_data.delay.values[0]
 
         # step 2 should correspond to the exec time for the second row
         step2_etime = model.get_execution_time(delay=step1_delay)
-        np.testing.assert_almost_equal(step2_etime,
-                                       test_data.exec_time.values[1])
+        np.testing.assert_almost_equal(step2_etime, test_data.exec_time.values[1])
         step3_delay = test_data.delay.values[1]
 
         # step 3
         step3_etime = model.get_execution_time(delay=step3_delay)
-        np.testing.assert_almost_equal(step3_etime,
-                                       test_data.exec_time.values[2])
+        np.testing.assert_almost_equal(step3_etime, test_data.exec_time.values[2])

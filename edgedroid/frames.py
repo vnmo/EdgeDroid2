@@ -20,10 +20,12 @@ class FrameSet:
     .npz format and parses it.
     """
 
-    def __init__(self,
-                 name: str,
-                 initial_frame: npt.NDArray,
-                 steps: Sequence[Dict[str, npt.NDArray]]):
+    def __init__(
+        self,
+        name: str,
+        initial_frame: npt.NDArray,
+        steps: Sequence[Dict[str, npt.NDArray]],
+    ):
         """
         Parameters
         ----------
@@ -46,15 +48,13 @@ class FrameSet:
     def __str__(self) -> str:
         return yaml.safe_dump(
             {
-                'name'         : self._name,
-                'num_steps'    : self.step_count,
-                'initial_frame': f'{len(self._init_frame.tobytes())} bytes',
-                'steps'        : [
-                    {
-                        tag: f'{len(data.tobytes())} bytes'
-                        for tag, data in step.items()
-                    } for step in self._steps
-                ]
+                "name": self._name,
+                "num_steps": self.step_count,
+                "initial_frame": f"{len(self._init_frame.tobytes())} bytes",
+                "steps": [
+                    {tag: f"{len(data.tobytes())} bytes" for tag, data in step.items()}
+                    for step in self._steps
+                ],
             }
         )
 
@@ -75,9 +75,7 @@ class FrameSet:
         """
         return self._init_frame.copy()
 
-    def get_frame(self,
-                  step_index: Any,
-                  frame_tag: str) -> npt.NDArray:
+    def get_frame(self, step_index: Any, frame_tag: str) -> npt.NDArray:
         """
         Looks up a frame for a specific tag in a step.
 
@@ -96,9 +94,7 @@ class FrameSet:
         return self._steps[step_index][frame_tag].copy()
 
     @classmethod
-    def from_datafile(cls,
-                      task_name: str,
-                      trace_path: PathLike | str) -> FrameSet:
+    def from_datafile(cls, task_name: str, trace_path: PathLike | str) -> FrameSet:
         """
         Opens a frame tracefile and parses it.
 
@@ -133,26 +129,20 @@ class FrameSet:
         assert (len(data) - 1) % 3 == 0
         num_steps = (len(data) - 1) // 3
 
-        init_frame = data['initial']
+        init_frame = data["initial"]
         # TODO: hardcoded categories
         steps = deque()
         for step in range(num_steps):
             step_dict = {}
-            for tag in ('success', 'blank', 'low_confidence'):
-                step_dict[tag] = data[f'step{step:02d}_{tag}']
+            for tag in ("success", "blank", "low_confidence"):
+                step_dict[tag] = data[f"step{step:02d}_{tag}"]
             steps.append(step_dict)
 
-        return FrameSet(
-            name=task_name,
-            initial_frame=init_frame,
-            steps=steps
-        )
+        return FrameSet(name=task_name, initial_frame=init_frame, steps=steps)
 
 
 class FrameModel:
-    def __init__(self,
-                 probabilities: pd.DataFrame,
-                 success_tag: str = 'success'):
+    def __init__(self, probabilities: pd.DataFrame, success_tag: str = "success"):
         """
         Parameters
         ----------
@@ -205,11 +195,12 @@ class FrameModel:
         columns = set(probabilities.columns)
 
         try:
-            columns.remove('bin_start')
-            columns.remove('bin_end')
+            columns.remove("bin_start")
+            columns.remove("bin_end")
         except KeyError:
-            raise RuntimeError('Probability dataframe must include bin_start '
-                               'and bin_end columns.')
+            raise RuntimeError(
+                "Probability dataframe must include bin_start " "and bin_end columns."
+            )
 
         prob_sums = np.zeros(len(probabilities.index))
 
@@ -217,19 +208,20 @@ class FrameModel:
             prob_sums += probabilities[column]
 
         if not np.all(np.isclose(prob_sums, 1.0)):
-            raise RuntimeError('Sum of probabilities for each bin must be '
-                               'equal to 1.0.')
+            raise RuntimeError(
+                "Sum of probabilities for each bin must be " "equal to 1.0."
+            )
 
         # process probabilities
         self._probs = probabilities.copy()
-        self._probs['interval'] = pd.IntervalIndex.from_arrays(
-            left=probabilities['bin_start'],
-            right=probabilities['bin_end'],
-            closed='left',
+        self._probs["interval"] = pd.IntervalIndex.from_arrays(
+            left=probabilities["bin_start"],
+            right=probabilities["bin_end"],
+            closed="left",
         )
-        self._probs = self._probs \
-            .drop(columns=['bin_start', 'bin_end']) \
-            .set_index('interval', verify_integrity=True)
+        self._probs = self._probs.drop(columns=["bin_start", "bin_end"]).set_index(
+            "interval", verify_integrity=True
+        )
 
         self._rng = np.random.default_rng()
         self._success_tag = success_tag
@@ -239,15 +231,9 @@ class FrameModel:
             return self._success_tag
 
         probs = self._probs[self._probs.index.contains(rel_pos)].iloc[0]
-        return self._rng.choice(
-            a=probs.index,
-            replace=False,
-            p=probs.values
-        )
+        return self._rng.choice(a=probs.index, replace=False, p=probs.values)
 
-    def get_frame_at_instant(self,
-                             instant: float | int,
-                             step_time: float | int) -> str:
+    def get_frame_at_instant(self, instant: float | int, step_time: float | int) -> str:
         """
         Return a frame sampled from a specific instant in a step.
 
@@ -267,8 +253,7 @@ class FrameModel:
         # purely according to distributions
         return self._sample_from_distribution(float(instant) / float(step_time))
 
-    def step_iterator(self,
-                      target_time: float) -> Iterator[Tuple[str, float]]:
+    def step_iterator(self, target_time: float) -> Iterator[Tuple[str, float]]:
         """
         An infinite iterator over the frame tags in a step.
         Any calls to next() between instants 0 and target_time will

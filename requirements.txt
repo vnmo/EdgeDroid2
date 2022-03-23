@@ -10,3 +10,4 @@ parse
 loguru
 pooch
 tqdm
+black[d]

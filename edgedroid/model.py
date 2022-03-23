@@ -23,10 +23,12 @@ class EdgeDroidModel:
     Assistance.
     """
 
-    def __init__(self,
-                 frame_trace: FrameSet,
-                 timing_model: ExecutionTimeModel,
-                 frame_model: FrameModel):
+    def __init__(
+        self,
+        frame_trace: FrameSet,
+        timing_model: ExecutionTimeModel,
+        frame_model: FrameModel,
+    ):
         """
         Parameters
         ----------
@@ -81,8 +83,8 @@ class EdgeDroidModel:
             step_index=-1,
             step_target_time=0,
             step_frame_time=0,
-            frame_tag='initial',
-            frame_data=prev_success
+            frame_tag="initial",
+            frame_data=prev_success,
         )
 
         # task is now running
@@ -94,18 +96,19 @@ class EdgeDroidModel:
 
             # replay frames for step
             for frame_tag, instant in self._frame_dists.step_iterator(
-                    target_time=step_duration):
+                target_time=step_duration
+            ):
                 # FIXME: hardcoded string tags
 
-                if frame_tag == 'repeat':
+                if frame_tag == "repeat":
                     yield ModelFrame(
                         step_index=step_index,
                         step_frame_time=instant,
                         step_target_time=step_duration,
                         frame_tag=frame_tag,
-                        frame_data=prev_success
+                        frame_data=prev_success,
                     )
-                elif frame_tag == 'success':
+                elif frame_tag == "success":
                     prev_success = self._frames.get_frame(step_index, frame_tag)
 
                     prev_step_end = time.monotonic()
@@ -114,7 +117,7 @@ class EdgeDroidModel:
                         step_frame_time=instant,
                         step_target_time=step_duration,
                         frame_tag=frame_tag,
-                        frame_data=prev_success
+                        frame_data=prev_success,
                     )
                 else:
                     yield ModelFrame(
@@ -122,5 +125,5 @@ class EdgeDroidModel:
                         step_frame_time=instant,
                         step_target_time=step_duration,
                         frame_tag=frame_tag,
-                        frame_data=self._frames.get_frame(step_index, frame_tag)
+                        frame_data=self._frames.get_frame(step_index, frame_tag),
                     )
