@@ -7,7 +7,11 @@ import pandas as pd
 import pooch
 from pandas import arrays
 
-__all__ = ["load_default_frame_probabilities", "load_default_exec_time_data"]
+__all__ = [
+    "load_default_frame_probabilities",
+    "load_default_exec_time_data",
+    "load_default_trace",
+]
 
 from ..frames import FrameSet
 
