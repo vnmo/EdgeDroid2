@@ -36,7 +36,7 @@ def preprocess_data(
     Processes a DataFrame with raw execution time data into a DataFrame
     usable by the model.
 
-    The argument DataFrame must in order (of steps) and have the following
+    The argument DataFrame must be in order (of steps) and have the following
     columns:
 
     - run_id (categorical or int)
@@ -60,18 +60,18 @@ def preprocess_data(
         A DataFrame.
     """
 
-    assert np.all(
-        np.isin(exec_time_data.columns, ("run_id", "neuroticism", "exec_time", "delay"))
-    )
+    for exp_col in ("run_id", "neuroticism", "exec_time", "delay"):
+        if exp_col not in exec_time_data.columns:
+            raise ModelException(f"Base dataframe missing column {exp_col}.")
 
     data = exec_time_data.copy()
     data["neuroticism"] = pd.cut(data["neuroticism"], pd.IntervalIndex(neuro_bins))
+    data["impairment"] = pd.cut(data["delay"], pd.IntervalIndex(impair_bins))
 
     processed_dfs = deque()
     for run_id, df in data.groupby("run_id"):
         df = df.copy()
         df["next_exec_time"] = df["exec_time"].shift(-1)
-        df["impairment"] = pd.cut(df["delay"], pd.IntervalIndex(impair_bins))
         df["prev_impairment"] = df["impairment"].shift()
         df["transition"] = Transition.NONE.value
 

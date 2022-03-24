@@ -46,7 +46,7 @@ def load_default_exec_time_data() -> Tuple[
 
     with as_file(data_file) as fp:
         return (
-            pd.read_parquet(fp),
+            pd.read_parquet(fp).reset_index(),
             arrays.IntervalArray.from_breaks(_default_neuro_bins, closed="left"),
             arrays.IntervalArray.from_breaks(_default_impairment_bins, closed="left"),
             arrays.IntervalArray.from_breaks(_default_duration_bins, closed="left"),
