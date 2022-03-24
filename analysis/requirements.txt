@@ -1,0 +1,8 @@
+jupyter
+notebook
+jupyterlab
+pandas
+numpy
+seaborn
+matplotlib
+tqdm
