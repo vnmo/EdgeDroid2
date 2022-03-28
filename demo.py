@@ -52,28 +52,17 @@ def processing_thread_loop(
             ui_guidance_q.append((guidance, msg))
 
             result = lego_task.submit_frame(model_frame.frame_data)
-            if model_frame.frame_tag == "repeat":
-                assert result == FrameResult.NO_CHANGE
-            elif model_frame.frame_tag == "low_confidence":
-                assert result == FrameResult.LOW_CONFIDENCE
-            elif model_frame.frame_tag == "blank":
-                assert result in (FrameResult.JUNK_FRAME, FrameResult.CV_ERROR)
-            elif model_frame.frame_tag in ("success", "initial"):
-                assert result == FrameResult.SUCCESS
-            else:
-                raise RuntimeError()
-
-            # match model_frame.frame_tag:
-            #     case "repeat":
-            #         assert result == FrameResult.NO_CHANGE
-            #     case "low_confidence":
-            #         assert result == FrameResult.LOW_CONFIDENCE
-            #     case "blank":
-            #         assert result in (FrameResult.JUNK_FRAME, FrameResult.CV_ERROR)
-            #     case "success" | "initial":
-            #         assert result == FrameResult.SUCCESS
-            #     case _:
-            #         raise RuntimeError()
+            match model_frame.frame_tag:
+                case "repeat":
+                    assert result == FrameResult.NO_CHANGE
+                case "low_confidence":
+                    assert result == FrameResult.LOW_CONFIDENCE
+                case "blank":
+                    assert result in (FrameResult.JUNK_FRAME, FrameResult.CV_ERROR)
+                case "success" | "initial":
+                    assert result == FrameResult.SUCCESS
+                case _:
+                    raise RuntimeError()
     except AssertionError:
         print(result)
         raise
