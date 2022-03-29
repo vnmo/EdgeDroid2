@@ -192,6 +192,8 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         super().__init__()
         # first, we filter on neuroticism
         data = data[data["neuroticism"].array.contains(neuroticism)]
+        self._neuroticism = neuroticism
+        self._neuro_binned = data["neuroticism"].unique()[0]
 
         # next, prepare views
         self._data_views = (
@@ -256,6 +258,8 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def state_info(self) -> Dict[str, Any]:
         return {
+            "model neuroticism": self._neuroticism,
+            "model neuroticism (binned)": self._neuro_binned,
             "latest impairment": self._impairment,
             "latest transition": self._transition.value,
             "current duration": self._duration,

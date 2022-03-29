@@ -6,3 +6,5 @@ numpy
 seaborn
 matplotlib
 tqdm
+multiprocess
+dill
