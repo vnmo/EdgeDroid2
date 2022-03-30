@@ -11,4 +11,3 @@ pooch
 tqdm
 black[d]
 setuptools
-
