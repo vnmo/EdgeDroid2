@@ -2,7 +2,7 @@ import time
 from dataclasses import dataclass
 from typing import Iterator
 
-import nptyping as npt
+import numpy.typing as npt
 
 from .execution_times import ExecutionTimeModel
 from .frames import FrameModel, FrameSet

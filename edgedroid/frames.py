@@ -5,7 +5,7 @@ from collections import deque
 from os import PathLike
 from typing import Any, Dict, Iterator, Sequence, Tuple
 
-import nptyping as npt
+import numpy.typing as npt
 import numpy as np
 import pandas as pd
 import yaml

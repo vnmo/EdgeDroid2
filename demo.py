@@ -5,8 +5,8 @@ from collections import deque
 from typing import Deque
 
 import cv2
-import nptyping as npt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from gabriel_lego import FrameResult, LEGOTask
 

@@ -1,7 +1,6 @@
 from collections import deque
-from typing import Sequence, Tuple
+from typing import Sequence
 
-import numpy.typing as npt
 import numpy as np
 import pandas as pd
 

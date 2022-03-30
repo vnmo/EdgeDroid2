@@ -5,8 +5,8 @@ import enum
 from collections import deque
 from typing import Any, Dict, Iterator
 
-import nptyping as npt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 from pandas import arrays
 from scipy import stats
