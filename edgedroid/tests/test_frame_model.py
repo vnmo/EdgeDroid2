@@ -4,13 +4,15 @@ import numpy as np
 import pandas as pd
 from numpy import testing as nptesting
 
-from edgedroid.frames import FrameModel
+from ..data import load_default_frame_probabilities
+from ..frames import FrameModel
 
 
 class TestFrameModel(unittest.TestCase):
     def setUp(self) -> None:
         # load data
-        self.probs = pd.read_csv("../edgedroid/data/resources/frame_probabilities.csv")
+        self.probs = load_default_frame_probabilities()
+
         self.model = FrameModel(self.probs)
 
         self.probs["interval"] = pd.IntervalIndex.from_arrays(

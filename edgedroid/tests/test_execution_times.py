@@ -5,7 +5,7 @@ import pandas as pd
 from numpy import testing as nptest
 from pandas import arrays
 
-from edgedroid.execution_times import ModelException, Transition, preprocess_data
+from ..execution_times import ModelException, Transition, preprocess_data
 
 
 class TestDataPreprocessing(TestCase):
