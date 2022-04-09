@@ -200,7 +200,11 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             data.groupby(
                 ["impairment", "duration", "transition"], observed=True, dropna=True
             )["next_exec_time"]
-            .apply(lambda e: np.array(e.dropna(), dtype=np.float64))
+            .apply(
+                lambda e: np.array(
+                    e[(e - e.mean()).abs() < (2 * e.std())].dropna(), dtype=np.float64
+                )
+            )
             .to_dict()
         )
 
@@ -315,4 +319,5 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             raise ModelException(f"No data for model state: {self.state_info()}!")
 
         # finally, sample from the dist and return an execution time in seconds
+        # TODO: make sure sampling doesn't return negative values???
         return dist.rvs()
