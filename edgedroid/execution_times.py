@@ -69,13 +69,23 @@ def preprocess_data(
             raise ModelException(f"Base dataframe missing column {exp_col}.")
 
     data = exec_time_data.copy()
+    data["neuroticism_raw"] = data["neuroticism"]
     data["neuroticism"] = pd.cut(data["neuroticism"], pd.IntervalIndex(neuro_bins))
-    data["impairment"] = pd.cut(data["delay"], pd.IntervalIndex(impair_bins))
+    # data["impairment"] = pd.cut(data["delay"], pd.IntervalIndex(impair_bins))
 
     processed_dfs = deque()
     for run_id, df in data.groupby("run_id"):
+        # df = df.copy()
         df = df.copy()
-        df["next_exec_time"] = df["exec_time"].shift(-1)
+        df["delay"] = df["delay"].shift()
+
+        # assume that dealy """before""" first step is 0
+        df.iloc[0, df.columns.get_loc("delay")] = 0.0
+
+        df["impairment"] = pd.cut(df["delay"], pd.IntervalIndex(impair_bins))
+        df = df.rename(columns={"exec_time": "next_exec_time"})
+
+        # df["next_exec_time"] = df["exec_time"].shift(-1)
         df["prev_impairment"] = df["impairment"].shift()
         df["transition"] = Transition.NONE.value
 
@@ -112,11 +122,17 @@ def preprocess_data(
             return result
 
         df["transition"] = diff_imp_groups.apply(tag_transition)
-        df["duration"] = df.groupby(
-            df["transition"].ne(df["transition"].shift()).cumsum()
-        ).cumcount()
+        df["duration"] = (
+            df.groupby(
+                (
+                    df["transition"].ne(df["transition"].shift())
+                    | df["impairment"].ne(df["prev_impairment"])
+                ).cumsum()
+            ).cumcount()
+            + 1
+        )
 
-        df = df.drop(columns=["exec_time", "delay"])
+        # df = df.drop(columns=["delay"])
         processed_dfs.append(df)
 
     data = pd.concat(processed_dfs, ignore_index=False)
@@ -125,6 +141,7 @@ def preprocess_data(
     data["transition"] = data["transition"].astype("category")
     data["neuroticism"] = data["neuroticism"].astype(pd.IntervalDtype())
     data["impairment"] = data["impairment"].astype(pd.IntervalDtype())
+    data["duration_raw"] = data["duration"]
     data["duration"] = pd.cut(data["duration"], pd.IntervalIndex(duration_bins)).astype(
         pd.IntervalDtype()
     )
@@ -253,8 +270,10 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             if transition_fade_distance is not None
             else float("inf")
         )
-        self._duration = 0
+        self._seq = 1
+        self._duration = 1
         self._binned_duration = None
+        self._delay = 0
         self._impairment = None
         self._transition = Transition.NONE
         self.reset()
@@ -264,14 +283,20 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def reset(self) -> None:
         # initial state
-        self._duration = 0
+        self._seq = 1
+        self._duration = 1
         self._binned_duration = self._duration_bins[
             self._duration_bins.contains(self._duration)
         ][0]
-        self._impairment = self._impairment_bins[self._impairment_bins.contains(0)][0]
+        self._delay = 0
+        self._impairment = self._impairment_bins[
+            self._impairment_bins.contains(self._delay)
+        ][0]
         self._transition = Transition.NONE
 
     def set_delay(self, delay: float | int) -> None:
+        self._seq += 1
+        self._delay = delay
         new_impairment = self._impairment_bins[self._impairment_bins.contains(delay)][0]
 
         if new_impairment > self._impairment:
@@ -280,11 +305,14 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         elif new_impairment < self._impairment:
             self._transition = Transition.H2L
             self._duration = 1
+        elif (
+            self._duration + 1 > self._fade_distance
+            and self._transition != Transition.NONE
+        ):
+            self._duration = 1
+            self._transition = Transition.NONE
         else:
             self._duration += 1
-            if self._duration > self._fade_distance:
-                self._duration = 1
-                self._transition = Transition.NONE
 
         self._binned_duration = self._duration_bins[
             self._duration_bins.contains(self._duration)
@@ -305,12 +333,20 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def state_info(self) -> Dict[str, Any]:
         return {
-            "model neuroticism": self._neuroticism,
-            "model neuroticism (binned)": self._neuro_binned,
-            "latest impairment": self._impairment,
-            "latest transition": self._transition.value,
-            "current duration": self._duration,
-            "current duration (binned)": self._binned_duration,
+            "seq": self._seq,
+            "neuroticism": self._neuro_binned,
+            "neuroticism_raw": self._neuroticism,
+            "delay": self._delay,
+            "impairment": self._impairment,
+            "transition": self._transition.value,
+            "duration": self._binned_duration,
+            "duration_raw": self._duration
+            # "model neuroticism": self._neuroticism,
+            # "model neuroticism (binned)": self._neuro_binned,
+            # "latest impairment": self._impairment,
+            # "latest transition": self._transition.value,
+            # "current duration": self._duration,
+            # "current duration (binned)": self._binned_duration,
         }
 
 
