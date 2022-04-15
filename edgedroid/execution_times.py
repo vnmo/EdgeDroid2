@@ -234,30 +234,29 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._neuroticism = neuroticism
         self._neuro_binned = data["neuroticism"].unique()[0]
 
-        # def cleanup_execution_times(e: pd.Series) -> npt.NDArray:
-        #     # clean up execution times by removing outliers identified with the
-        #     # interquantile range method
-        #
-        #     q1 = e.quantile(0.25)
-        #     q3 = e.quantile(0.75)
-        #     iqr = q3 - q1
-        #
-        #     lower_fence = q1 - (iqr * 1.5)
-        #     upper_fence = q3 + (iqr * 1.5)
-        #
-        #     return (
-        #         e[(e >= lower_fence) & (e <= upper_fence)]
-        #         .dropna()
-        #         .to_numpy(dtype=np.float64)
-        #     )
+        def winsorize_execution_times(e: pd.Series) -> npt.NDArray:
+            # clean up execution times by setting
+            # x = 5th percentile, for all values < 5th percentile
+            # x = 95th percentile, for all values > 95th percentile
+
+            e = e.dropna().to_numpy(dtype=np.float64)
+
+            percs = np.percentile(e, [5, 95])
+            mask5 = e < percs[0]
+            mask95 = e > percs[1]
+
+            e[mask5] = percs[0]
+            e[mask95] = percs[1]
+            return e
 
         # next, prepare views
         self._data_views = (
             data.groupby(
                 ["impairment", "duration", "transition"], observed=True, dropna=True
             )["next_exec_time"]
-            # .apply(cleanup_execution_times)
-            .apply(lambda x: x.dropna().to_numpy()).to_dict()
+            .apply(winsorize_execution_times)
+            .to_dict()
+            # .apply(lambda x: x.dropna().to_numpy()).to_dict()
         )
 
         # unique bins (interval arrays)
