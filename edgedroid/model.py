@@ -10,6 +10,8 @@ from .frames import FrameModel, FrameSet
 
 @dataclass(frozen=True)
 class ModelFrame:
+    seq: int  # absolute seq number
+    step_seq: int  # seq number for current step
     step_index: int
     step_frame_time: float
     step_target_time: float
@@ -46,10 +48,15 @@ class EdgeDroidModel:
         self._timings = timing_model
         self._frames = frame_trace
         self._frame_dists = frame_model
+        self._frame_count = 0
 
     @property
     def step_count(self) -> int:
         return self._frames.step_count
+
+    @property
+    def frame_count(self) -> int:
+        return self._frame_count
 
     def play(self) -> Iterator[ModelFrame]:
         """
@@ -79,7 +86,10 @@ class EdgeDroidModel:
 
         # yield the initial frame of the task
         prev_success = self._frames.get_initial_frame()
+        self._frame_count += 1
         yield ModelFrame(
+            seq=self._frame_count,
+            step_seq=1,
             step_index=-1,
             step_target_time=0,
             step_frame_time=0,
@@ -95,13 +105,17 @@ class EdgeDroidModel:
             step_duration = self._timings.get_execution_time()
 
             # replay frames for step
-            for frame_tag, instant in self._frame_dists.step_iterator(
-                target_time=step_duration
+            for idx, (frame_tag, instant) in enumerate(
+                self._frame_dists.step_iterator(target_time=step_duration)
             ):
                 # FIXME: hardcoded string tags
+                seq = idx + 1
+                self._frame_count += 1
 
                 if frame_tag == "repeat":
                     yield ModelFrame(
+                        seq=self._frame_count,
+                        step_seq=seq,
                         step_index=step_index,
                         step_frame_time=instant,
                         step_target_time=step_duration,
@@ -113,6 +127,8 @@ class EdgeDroidModel:
 
                     prev_step_end = time.monotonic()
                     yield ModelFrame(
+                        seq=self._frame_count,
+                        step_seq=seq,
                         step_index=step_index,
                         step_frame_time=instant,
                         step_target_time=step_duration,
@@ -121,6 +137,8 @@ class EdgeDroidModel:
                     )
                 else:
                     yield ModelFrame(
+                        seq=self._frame_count,
+                        step_seq=seq,
                         step_index=step_index,
                         step_frame_time=instant,
                         step_target_time=step_duration,
