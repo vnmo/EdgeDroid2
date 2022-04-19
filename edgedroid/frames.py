@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import time
 from collections import deque
 from os import PathLike
@@ -253,13 +254,16 @@ class FrameModel:
         # purely according to distributions
         return self._sample_from_distribution(float(instant) / float(step_time))
 
-    def step_iterator(self, target_time: float) -> Iterator[Tuple[str, float]]:
+    def step_iterator(
+        self, target_time: float, infinite: bool = False
+    ) -> Iterator[Tuple[str, float]]:
         """
-        An infinite iterator over the frame tags in a step.
+        An iterator over the frame tags in a step.
         Any calls to next() between instants 0 and target_time will
         correspond to frame tags sampled from the internal distributions.
         Calls to next() after a time greater than target time has been
-        elapsed will always return a success tag and close the iterator.
+        elapsed will always return a success tag; if infinite is False, the iterator
+        will additionally be closed.
 
         Yields
         ------
@@ -271,5 +275,5 @@ class FrameModel:
         while True:
             instant = time.monotonic() - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
-            if instant > target_time:
+            if instant > target_time and not infinite:
                 return

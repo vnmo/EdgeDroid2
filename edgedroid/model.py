@@ -1,3 +1,4 @@
+import contextlib
 import time
 from dataclasses import dataclass
 from typing import Iterator
@@ -49,6 +50,10 @@ class EdgeDroidModel:
         self._frames = frame_trace
         self._frame_dists = frame_model
         self._frame_count = 0
+        self._advance_step = False
+
+    def advance_step(self) -> None:
+        self._advance_step = True
 
     @property
     def step_count(self) -> int:
@@ -86,16 +91,20 @@ class EdgeDroidModel:
 
         # yield the initial frame of the task
         prev_success = self._frames.get_initial_frame()
-        self._frame_count += 1
-        yield ModelFrame(
-            seq=self._frame_count,
-            step_seq=1,
-            step_index=-1,
-            step_target_time=0,
-            step_frame_time=0,
-            frame_tag="initial",
-            frame_data=prev_success,
-        )
+
+        while not self._advance_step:
+            self._frame_count += 1
+            yield ModelFrame(
+                seq=self._frame_count,
+                step_seq=1,
+                step_index=-1,
+                step_target_time=0,
+                step_frame_time=0,
+                frame_tag="initial",
+                frame_data=prev_success,
+            )
+
+        self._advance_step = False
 
         # task is now running
         for step_index in range(self._frames.step_count):
@@ -105,43 +114,48 @@ class EdgeDroidModel:
             step_duration = self._timings.get_execution_time()
 
             # replay frames for step
-            for idx, (frame_tag, instant) in enumerate(
-                self._frame_dists.step_iterator(target_time=step_duration)
-            ):
-                # FIXME: hardcoded string tags
-                seq = idx + 1
-                self._frame_count += 1
+            seq = 0
+            with contextlib.closing(
+                self._frame_dists.step_iterator(
+                    target_time=step_duration, infinite=True
+                )
+            ) as step_frames:
+                while not self._advance_step:
+                    frame_tag, instant = next(step_frames)
+                    seq += 1
+                    self._frame_count += 1
 
-                if frame_tag == "repeat":
-                    yield ModelFrame(
-                        seq=self._frame_count,
-                        step_seq=seq,
-                        step_index=step_index,
-                        step_frame_time=instant,
-                        step_target_time=step_duration,
-                        frame_tag=frame_tag,
-                        frame_data=prev_success,
-                    )
-                elif frame_tag == "success":
-                    prev_success = self._frames.get_frame(step_index, frame_tag)
+                    # FIXME: hardcoded string tags
+                    if frame_tag == "repeat":
+                        yield ModelFrame(
+                            seq=self._frame_count,
+                            step_seq=seq,
+                            step_index=step_index,
+                            step_frame_time=instant,
+                            step_target_time=step_duration,
+                            frame_tag=frame_tag,
+                            frame_data=prev_success,
+                        )
+                    elif frame_tag == "success":
+                        prev_success = self._frames.get_frame(step_index, frame_tag)
 
-                    prev_step_end = time.monotonic()
-                    yield ModelFrame(
-                        seq=self._frame_count,
-                        step_seq=seq,
-                        step_index=step_index,
-                        step_frame_time=instant,
-                        step_target_time=step_duration,
-                        frame_tag=frame_tag,
-                        frame_data=prev_success,
-                    )
-                else:
-                    yield ModelFrame(
-                        seq=self._frame_count,
-                        step_seq=seq,
-                        step_index=step_index,
-                        step_frame_time=instant,
-                        step_target_time=step_duration,
-                        frame_tag=frame_tag,
-                        frame_data=self._frames.get_frame(step_index, frame_tag),
-                    )
+                        prev_step_end = time.monotonic()
+                        yield ModelFrame(
+                            seq=self._frame_count,
+                            step_seq=seq,
+                            step_index=step_index,
+                            step_frame_time=instant,
+                            step_target_time=step_duration,
+                            frame_tag=frame_tag,
+                            frame_data=prev_success,
+                        )
+                    else:
+                        yield ModelFrame(
+                            seq=self._frame_count,
+                            step_seq=seq,
+                            step_index=step_index,
+                            step_frame_time=instant,
+                            step_target_time=step_duration,
+                            frame_tag=frame_tag,
+                            frame_data=self._frames.get_frame(step_index, frame_tag),
+                        )
