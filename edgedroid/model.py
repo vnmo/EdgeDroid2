@@ -85,6 +85,8 @@ class EdgeDroidModel:
             An Iterator that yields appropriate video frames as numpy arrays.
         """
 
+        self._advance_step = False
+
         self._timings.reset()
 
         prev_step_end = time.monotonic()
@@ -104,14 +106,13 @@ class EdgeDroidModel:
                 frame_data=prev_success,
             )
 
-        self._advance_step = False
-
         # task is now running
         for step_index in range(self._frames.step_count):
             # get a step duration
             delay = time.monotonic() - prev_step_end
             self._timings.set_delay(delay)
             step_duration = self._timings.get_execution_time()
+            self._advance_step = False
 
             # replay frames for step
             seq = 0
