@@ -1,19 +1,21 @@
 from importlib import resources
 from importlib.resources import as_file
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 import pooch
 from pandas import arrays
+import numpy.typing as npt
 
 __all__ = [
     "load_default_frame_probabilities",
     "load_default_exec_time_data",
     "load_default_trace",
+    "load_default_task",
 ]
 
-from edgedroid.models.frames import FrameSet
+from ..models import FrameSet
 
 _default_neuro_bins = np.array([-np.inf, 1 / 3, 2 / 3, np.inf])
 _default_impairment_bins = np.array([-np.inf, 1.0, 2.0, np.inf])
@@ -73,3 +75,13 @@ def load_default_trace(trace_name: str) -> FrameSet:
     )
 
     return FrameSet.from_datafile(task_name=trace_name, trace_path=trace_path)
+
+
+def load_default_task(task_name: str) -> List[npt.NDArray[int]]:
+    from . import resources as edgedroid_resources
+
+    state_file = resources.files(edgedroid_resources).joinpath(f"{task_name}.npz")
+    with as_file(state_file) as fp:
+        states = np.load(str(fp))
+
+    return [states[str(i)] for i in range(len(states))]
