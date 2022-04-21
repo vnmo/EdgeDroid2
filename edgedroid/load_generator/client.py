@@ -35,7 +35,10 @@ class StreamSocketEmulation:
         # should be able to use a single thread for everything
 
         # first thing first, prepare data
-        data = preprocess_data(*e_data.load_default_exec_time_data())
+        data = preprocess_data(
+            *e_data.load_default_exec_time_data(),
+            transition_fade_distance=fade_distance,
+        )
         frameset = e_data.load_default_trace(trace)
 
         # prepare models

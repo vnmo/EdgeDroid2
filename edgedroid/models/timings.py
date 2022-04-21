@@ -206,6 +206,30 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         pass
 
 
+class ConstantExecutionTimeModel(ExecutionTimeModel):
+    """
+    Returns a constant execution time. Intended for testing purposes.
+    """
+
+    def __init__(self, execution_time_seconds: float):
+        super(ConstantExecutionTimeModel, self).__init__()
+        self._exec_time = execution_time_seconds
+
+    def set_delay(self, delay: float | int) -> None:
+        # no-op
+        pass
+
+    def get_execution_time(self) -> float:
+        return self._exec_time
+
+    def state_info(self) -> Dict[str, Any]:
+        return {}
+
+    def reset(self) -> None:
+        # no-op
+        pass
+
+
 class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     """
     Implementation of an execution time model which returns execution times

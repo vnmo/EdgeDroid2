@@ -251,7 +251,11 @@ class FrameModel:
         """
 
         # purely according to distributions
-        return self._sample_from_distribution(float(instant) / float(step_time))
+        try:
+            return self._sample_from_distribution(float(instant) / float(step_time))
+        except ZeroDivisionError:
+            # if step time is 0 we can immediately assume step is over!
+            return self._success_tag
 
     def step_iterator(
         self, target_time: float, infinite: bool = False
