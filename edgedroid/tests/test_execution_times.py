@@ -10,7 +10,7 @@ from pandas import arrays
 from tqdm import tqdm
 
 from ..data import *
-from ..execution_times import (
+from ..models.timings import (
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
     ModelException,

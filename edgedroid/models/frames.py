@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import contextlib
 import time
 from collections import deque
 from os import PathLike
 from typing import Any, Dict, Iterator, Sequence, Tuple
 
-import numpy.typing as npt
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import yaml
 

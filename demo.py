@@ -12,9 +12,9 @@ from gabriel_lego import FrameResult, LEGOTask
 
 import edgedroid.data as e_data
 from edgedroid.data.load import load_default_frame_probabilities, load_default_trace
-from edgedroid.execution_times import TheoreticalExecutionTimeModel, preprocess_data
-from edgedroid.frames import FrameModel
-from edgedroid.model import EdgeDroidModel
+from edgedroid.models.timings import TheoreticalExecutionTimeModel, preprocess_data
+from edgedroid.models.frames import FrameModel
+from edgedroid.models.model import EdgeDroidModel
 
 
 def processing_thread_loop(

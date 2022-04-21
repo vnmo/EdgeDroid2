@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 from numpy import testing as nptesting
 
+from ..models import FrameModel
 from ..data import load_default_frame_probabilities
-from ..frames import FrameModel
 
 
 class TestFrameModel(unittest.TestCase):
