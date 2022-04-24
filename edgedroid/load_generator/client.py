@@ -99,6 +99,7 @@ class StreamSocketEmulation:
         logger.warning("Emulation finished")
 
 
+# TODO: Move CLI to a separate module
 @click.command()
 @click.argument("host", type=str)
 @click.argument("port", type=int)
