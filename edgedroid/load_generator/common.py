@@ -64,6 +64,18 @@ class EdgeDroidFrame:
         return cls(seq, image_data)
 
 
+def recv_from_socket(sock: socket.SocketType, amount: int) -> bytes:
+    received = b""
+    while len(received) < amount:
+        data = sock.recv(amount - len(received))
+        if len(data) == 0:
+            # socket is closed
+            raise EOFError()
+        else:
+            received += data
+    return received
+
+
 def frame_stream_unpack(
     sock: socket.SocketType,
 ) -> Iterator[EdgeDroidFrame]:
@@ -71,23 +83,20 @@ def frame_stream_unpack(
     logger.info("Started frame stream unpacker")
     try:
         while True:
-            header = b""
-            while len(header) < HEADER_LEN:
-                header += sock.recv(HEADER_LEN - len(header))
-
+            header = recv_from_socket(sock, HEADER_LEN)
             # got a complete header
             seq, height, width, channels, data_len = struct.unpack(
                 HEADER_PACK_FMT, header
             )
 
             # read data
-            image_data = b""
-            while len(image_data) < data_len:
-                image_data += sock.recv(data_len - len(image_data))
+            image_data = recv_from_socket(sock, data_len)
 
             # got all the data!
             image = bytes_to_numpy_image(image_data, height, width, channels)
             yield EdgeDroidFrame(seq, image)
+    except EOFError:
+        logger.warning("Socket was closed")
     finally:
         logger.debug("Closing frame stream unpacker")
 
@@ -97,11 +106,13 @@ def pack_response(resp: bool) -> bytes:
 
 
 def response_stream_unpack(
-    stream_src: socket.SocketType,
+    sock: socket.SocketType,
 ) -> Iterator[bool]:
-    while True:
-        resp = b""
-        while len(resp) < RESP_LEN:
-            resp += stream_src.recv(RESP_LEN - len(resp))
-
-        yield struct.unpack(RESP_PACK_FMT, resp)[0]  # unpack always returns tuples
+    try:
+        while True:
+            resp = recv_from_socket(sock, RESP_LEN)
+            yield struct.unpack(RESP_PACK_FMT, resp)[0]  # unpack always returns tuples
+    except EOFError:
+        logger.warning("Socket was closed")
+    finally:
+        logger.debug("Closing response stream unpacker")
