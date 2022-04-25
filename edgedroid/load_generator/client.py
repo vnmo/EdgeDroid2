@@ -1,6 +1,6 @@
 import contextlib
 import socket
-from typing import Literal
+from typing import Callable, Literal
 
 import click
 from loguru import logger
@@ -12,6 +12,7 @@ from ..models import (
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
     FrameModel,
+    ModelFrame,
     TheoreticalExecutionTimeModel,
     preprocess_data,
 )
@@ -61,7 +62,26 @@ class StreamSocketEmulation:
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
         )
 
-    def emulate(self, sock: socket.SocketType) -> None:
+    def emulate(
+        self,
+        sock: socket.SocketType,
+        emit_cb: Callable[[ModelFrame], None] = lambda _: None,
+        resp_cb: Callable[[bool], None] = lambda _: None,
+    ) -> None:
+        """
+        # TODO: document
+
+        Parameters
+        ----------
+        sock
+        emit_cb
+        resp_cb
+
+        Returns
+        -------
+
+        """
+
         logger.warning("Starting emulation")
         with contextlib.closing(response_stream_unpack(sock)) as resp_stream:
             step = 0
@@ -77,24 +97,27 @@ class StreamSocketEmulation:
                 )
                 payload = EdgeDroidFrame(model_frame.seq, model_frame.frame_data).pack()
                 sock.sendall(payload)
+                emit_cb(model_frame)
 
                 # wait for response
                 logger.debug("Waiting for response from server")
                 resp = next(resp_stream)
                 logger.debug("Received response from server")
+                resp_cb(resp)
 
-                if resp and model_frame.frame_tag in ("success", "initial"):
-                    # if we receive a response for a success frame, advance the model
-                    logger.info("Advancing to next step")
-                    self._model.advance_step()
-                    step += 1
-                    logger.info(f"Current step: {step}")
-                elif not resp:
-                    logger.error(
-                        "Received unexpected unsuccessful response from server, "
-                        "aborting"
-                    )
-                    raise click.Abort()
+                if model_frame.frame_tag in ("success", "initial"):
+                    if resp:
+                        # if we receive a response for a success frame, advance the model
+                        logger.info("Advancing to next step")
+                        self._model.advance_step()
+                        step += 1
+                        logger.info(f"Current step: {step}")
+                    else:
+                        logger.error(
+                            "Received unexpected unsuccessful response from server, "
+                            "aborting"
+                        )
+                        raise click.Abort()
 
         logger.warning("Emulation finished")
 

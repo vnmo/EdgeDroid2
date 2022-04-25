@@ -9,11 +9,14 @@ from functools import wraps
 from threading import Event, Thread
 from typing import Any, Callable, Iterator, Optional, Tuple
 
+from gabriel_lego import FrameResult
 from loguru import logger
 
 from ..data import load_default_trace
 from ..load_generator import common
 from ..load_generator.client import StreamSocketEmulation
+from ..load_generator.server import _serve
+from ..models import ModelFrame
 
 
 def log_test(fn: Callable) -> Callable:
@@ -128,46 +131,59 @@ class TestCommon(unittest.TestCase):
                 self.assertEqual(resp, next(stream))
 
 
-class DummyServer(contextlib.AbstractContextManager, Thread):
-    """
-    Simply sends back "true" to each received frame.
-    """
-
-    def __init__(self, sock: socket.SocketType) -> None:
-        super(DummyServer, self).__init__()
+class TestServer(contextlib.AbstractContextManager, Thread):
+    def __init__(self, task_name: str, sock: socket.SocketType) -> None:
+        super(TestServer, self).__init__()
+        self._task_name = task_name
         self._socket = sock
-        self._running = Event()
+        self._exc_q = queue.Queue()
+        self._res_q = queue.Queue()
 
-    def start(self) -> None:
-        logger.info("Starting dummy server")
-        self._running.set()
-        super(DummyServer, self).start()
+    def get_exc_queue(self) -> queue.Queue:
+        return self._exc_q
 
-    def join(self, timeout: Optional[float] = None) -> None:
-        logger.info("Stopping dummy server")
-        self._running.clear()
-        super(DummyServer, self).join(timeout)
+    def get_result_queue(self) -> queue.Queue:
+        return self._res_q
 
-    def __enter__(self) -> DummyServer:
+    def __enter__(self) -> TestServer:
         self.start()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.join()
-        super(DummyServer, self).__exit__(exc_type, exc_val, exc_tb)
+        super(TestServer, self).__exit__(exc_type, exc_val, exc_tb)
 
     def run(self) -> None:
-        while self._running.is_set():
-            try:
-                with contextlib.closing(
-                    common.frame_stream_unpack(self._socket)
-                ) as stream:
-                    for _ in stream:
-                        self._socket.sendall(common.pack_response(True))
-            except socket.timeout:
-                pass
-            finally:
-                self._running.clear()
+        try:
+            _serve(
+                task_name=self._task_name,
+                sock=self._socket,
+                result_cb=self._res_q.put_nowait,
+            )
+        except Exception as e:
+            logger.exception("Exception in server thread", e)
+            self._exc_q.put_nowait(e)
+
+
+class FrameResultExpecter:
+    def __init__(self, testcase: unittest.TestCase):
+        self._expected_result = "initial"
+        self._test = testcase
+
+    def set_expected(self, expected: str) -> None:
+        self._expected_result = expected
+
+    def check_result(self, actual: FrameResult):
+        if self._expected_result in ("success", "initial"):
+            self._test.assertEqual(FrameResult.SUCCESS, actual)
+        elif self._expected_result == "repeat":
+            self._test.assertEqual(FrameResult.NO_CHANGE, actual)
+        elif self._expected_result == "blank":
+            self._test.assertIn(
+                actual, (FrameResult.JUNK_FRAME, FrameResult.CV_ERROR, FrameResult)
+            )
+        else:  # low confidence
+            self._test.assertEqual(FrameResult.LOW_CONFIDENCE, actual)
 
 
 class TestEmulation(unittest.TestCase):
@@ -179,8 +195,42 @@ class TestEmulation(unittest.TestCase):
             neuroticism=0.5, trace="test", fade_distance=4, model="empirical"
         )
 
-        with contextlib.ExitStack() as stack:
-            csock, ssock = stack.enter_context(client_server_sockets(timeout=0.250))
-            stack.enter_context(DummyServer(ssock))
+        with client_server_sockets(timeout=1.0) as (csock, ssock):
+            server_t = TestServer("test", ssock)
+            server_t.start()
+            expecter = FrameResultExpecter(self)
 
-            emulation.emulate(csock)
+            def emit_callback(frame: ModelFrame) -> None:
+                expecter.set_expected(frame.frame_tag)
+                try:
+                    # callback to check for exceptions in server loop
+                    exc = server_t.get_exc_queue().get_nowait()
+                    raise exc
+                except queue.Empty:
+                    pass
+
+            def result_callback(result: bool) -> None:
+                frame_result = server_t.get_result_queue().get_nowait()
+                expecter.check_result(frame_result)
+                try:
+                    # callback to check for exceptions in server loop
+                    exc = server_t.get_exc_queue().get_nowait()
+                    raise exc
+                except queue.Empty:
+                    pass
+
+            emulation.emulate(csock, emit_cb=emit_callback, resp_cb=result_callback)
+
+            # close client first, to make sure no exceptions ocur in server
+            csock.close()
+            try:
+                # callback to check for exceptions in server loop
+                exc = server_t.get_exc_queue().get_nowait()
+                raise exc
+            except queue.Empty:
+                pass
+
+            # should be able to join the server thread here, as the client socket
+            # closing should have triggered the server loop to end gracefully
+            server_t.join(timeout=0.1)
+            ssock.close()
