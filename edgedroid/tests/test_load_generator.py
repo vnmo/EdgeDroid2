@@ -82,13 +82,11 @@ class BytesSocketClient(contextlib.AbstractContextManager, Thread):
 
 
 class TestCommon(unittest.TestCase):
-    def setUp(self) -> None:
-        self.frames = load_default_trace("square00")
-
     @log_test
     def test_individual_packing_frames(self) -> None:
-        for i in range(self.frames.step_count):
-            frame_data = self.frames.get_frame(i, "success")
+        frames = load_default_trace("test")
+        for i in range(frames.step_count):
+            frame_data = frames.get_frame(i, "success")
             eframe1 = common.EdgeDroidFrame(i + 1, frame_data)
             eframe2 = common.EdgeDroidFrame.unpack(eframe1.pack())
 
@@ -96,6 +94,7 @@ class TestCommon(unittest.TestCase):
 
     @log_test
     def test_stream_packing_frames(self) -> None:
+        frames = load_default_trace("test")
         with contextlib.ExitStack() as stack:
             csock, ssock = stack.enter_context(client_server_sockets(timeout=0.250))
             stream = stack.enter_context(
@@ -103,9 +102,9 @@ class TestCommon(unittest.TestCase):
             )
             client = stack.enter_context(BytesSocketClient(csock))
 
-            for i in range(self.frames.step_count):
+            for i in range(frames.step_count):
                 logger.debug(f"Sending frame {i}...")
-                frame_data = self.frames.get_frame(i, "success")
+                frame_data = frames.get_frame(i, "success")
                 frame = common.EdgeDroidFrame(i + 1, frame_data)
                 client.send(frame.pack())
 
@@ -177,7 +176,7 @@ class TestEmulation(unittest.TestCase):
         logger.add(sys.stderr, level="INFO", colorize=True)
 
         emulation = StreamSocketEmulation(
-            neuroticism=0.5, trace="square00", fade_distance=4, model="empirical"
+            neuroticism=0.5, trace="test", fade_distance=4, model="empirical"
         )
 
         with contextlib.ExitStack() as stack:

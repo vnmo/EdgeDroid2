@@ -34,6 +34,7 @@ _default_traces = {
     "square10": "md5:935800f3a284020c64aef988d72f82da",
     "square09": "md5:bcb586ae17cc4b96829b4ac0e6f0067b",
     "square08": "md5:f7f4aea7235545bbe10a087c5ec2c4d3",
+    "test": "md5:50fd4887b4d4a6312befb9758ab31fd0",
 }
 
 

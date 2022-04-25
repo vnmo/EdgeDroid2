@@ -126,6 +126,9 @@ class FrameSet:
 
         # trace NPZ file contains initial frame + 3 frames per step
         # success, blank, and low_confidence
+        # TODO: this assumes 3 frame categories per step (success, low confidence and
+        #  blank (repeat is simply the previous success)). Maybe we should add a way
+        #  of configuring that.
         assert (len(data) - 1) % 3 == 0
         num_steps = (len(data) - 1) // 3
 
