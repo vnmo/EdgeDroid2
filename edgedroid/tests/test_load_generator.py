@@ -14,8 +14,8 @@ from loguru import logger
 
 from ..data import load_default_trace
 from ..load_generator import common
-from ..load_generator.client import StreamSocketEmulation
-from ..load_generator.server import _serve
+from ..load_generator.client.client import StreamSocketEmulation
+from edgedroid.load_generator.server.server import server
 from ..models import ModelFrame
 
 
@@ -155,7 +155,7 @@ class TestServer(contextlib.AbstractContextManager, Thread):
 
     def run(self) -> None:
         try:
-            _serve(
+            server(
                 task_name=self._task_name,
                 sock=self._socket,
                 result_cb=self._res_q.put_nowait,
