@@ -3,11 +3,10 @@ import sys
 from loguru import logger
 
 
-def set_log_verbosity(level: int) -> None:
-    level = max(1, level)
-
+def enable_logging(verbose: bool) -> None:
     logger.enable("edgedroid")
     logger.remove()
-    logger.add(sys.stderr, level=level)
 
+    level = "DEBUG" if verbose else "INFO"
+    logger.add(sys.stderr, level=level)
     logger.info(f"Setting logging level to {level}")

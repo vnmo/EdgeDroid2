@@ -5,7 +5,7 @@ import click
 from loguru import logger
 
 from .client import StreamSocketEmulation
-from ..common_cli import set_log_verbosity
+from ..common_cli import enable_logging
 
 
 @click.command("edgedroid-client")
@@ -49,12 +49,10 @@ from ..common_cli import set_log_verbosity
 @click.option(
     "-v",
     "--verbose",
-    "log_level",
-    type=int,
-    count=True,
-    default=1,
-    help="Enable verbose logging. "
-    "Can be specified multiple times for higher levels of debug output.",
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="Enable verbose logging.",
     show_default=True,
 )
 def edgedroid_client(
@@ -64,7 +62,7 @@ def edgedroid_client(
     task: str,
     fade_distance: int,
     model: Literal["empirical", "theoretical"],
-    log_level: int,
+    verbose: bool,
 ):
     """
     Run an EdgeDroid2 client.
@@ -72,8 +70,7 @@ def edgedroid_client(
     Connects to HOST:PORT and runs an emulation.
     """
 
-    set_log_verbosity(log_level)
-
+    enable_logging(verbose)
     emulation = StreamSocketEmulation(
         neuroticism=neuroticism, trace=task, fade_distance=fade_distance, model=model
     )

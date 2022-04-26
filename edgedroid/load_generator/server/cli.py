@@ -1,6 +1,6 @@
 import click
 from .server import serve_LEGO_task
-from ..common_cli import set_log_verbosity
+from ..common_cli import enable_logging
 
 
 @click.command("edgedroid-server")
@@ -20,16 +20,18 @@ from ..common_cli import set_log_verbosity
 @click.option(
     "-v",
     "--verbose",
-    "log_level",
-    type=int,
-    count=True,
-    default=1,
-    help="Enable verbose logging. "
-    "Can be specified multiple times for higher levels of debug output.",
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="Enable verbose logging.",
     show_default=True,
 )
 def edgedroid_server(
-    bind_address: str, bind_port: int, task_name: str, one_shot: bool, log_level: int
+    bind_address: str,
+    bind_port: int,
+    task_name: str,
+    one_shot: bool,
+    verbose: bool,
 ):
     """
     Run an EdgeDroid2 server based on Gabriel-LEGO.
@@ -37,7 +39,7 @@ def edgedroid_server(
     Binds to BIND-ADDRESS:BIND-PORT and listens for connections from EdgeDroid
     clients. TASK_NAME identifies the task to run.
     """
-    set_log_verbosity(log_level)
+    enable_logging(verbose)
     serve_LEGO_task(
         task=task_name, port=bind_port, bind_address=bind_address, one_shot=one_shot
     )
