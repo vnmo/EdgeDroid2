@@ -236,6 +236,25 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     sampled from the empirical distributions of the underlying data.
     """
 
+    @classmethod
+    def from_default_data(
+        cls, neuroticism: float, *args, transition_fade_distance: int = 8, **kwargs
+    ) -> ExecutionTimeModel:
+        from .. import data as e_data
+
+        data = preprocess_data(
+            *e_data.load_default_exec_time_data(),
+            transition_fade_distance=transition_fade_distance,
+        )
+
+        return cls(
+            *args,
+            data=data,
+            neuroticism=neuroticism,
+            transition_fade_distance=transition_fade_distance,
+            **kwargs,
+        )
+
     def __init__(
         self,
         data: pd.DataFrame,

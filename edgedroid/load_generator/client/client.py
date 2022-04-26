@@ -14,7 +14,6 @@ from ...models import (
     FrameModel,
     ModelFrame,
     TheoreticalExecutionTimeModel,
-    preprocess_data,
 )
 
 
@@ -36,24 +35,22 @@ class StreamSocketEmulation:
         # should be able to use a single thread for everything
 
         # first thing first, prepare data
-        data = preprocess_data(
-            *e_data.load_default_exec_time_data(),
-            transition_fade_distance=fade_distance,
-        )
         frameset = e_data.load_default_trace(trace)
 
         # prepare models
         if model == "theoretical":
-            timing_model: ExecutionTimeModel = TheoreticalExecutionTimeModel(
-                data=data,
-                neuroticism=neuroticism,
-                transition_fade_distance=fade_distance,
+            timing_model: ExecutionTimeModel = (
+                TheoreticalExecutionTimeModel.from_default_data(
+                    neuroticism=neuroticism,
+                    transition_fade_distance=fade_distance,
+                )
             )
         else:
-            timing_model: ExecutionTimeModel = EmpiricalExecutionTimeModel(
-                data=data,
-                neuroticism=neuroticism,
-                transition_fade_distance=fade_distance,
+            timing_model: ExecutionTimeModel = (
+                EmpiricalExecutionTimeModel.from_default_data(
+                    neuroticism=neuroticism,
+                    transition_fade_distance=fade_distance,
+                )
             )
 
         frame_model = FrameModel(e_data.load_default_frame_probabilities())
@@ -107,7 +104,8 @@ class StreamSocketEmulation:
 
                 if model_frame.frame_tag in ("success", "initial"):
                     if resp:
-                        # if we receive a response for a success frame, advance the model
+                        # if we receive a response for a success frame, advance the
+                        # model
                         logger.info("Advancing to next step")
                         self._model.advance_step()
                         step += 1
