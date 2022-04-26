@@ -1,2 +1,3 @@
-graft edgedroid/data/resources
+graft edgedroid
 include LICENSE
+include README.md

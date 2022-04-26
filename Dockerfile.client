@@ -1,0 +1,15 @@
+FROM ubuntu:22.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -y && apt-get upgrade -y
+RUN apt-get install python3 python3-pip ffmpeg libsm6 libxext6 -y
+
+COPY . /opt/edgedroid
+WORKDIR /opt/edgedroid
+
+RUN pip install ".[load-client]"
+RUN mkdir -p /edgedroid
+
+WORKDIR /edgedroid
+ENTRYPOINT ["edgedroid-client"]
+
