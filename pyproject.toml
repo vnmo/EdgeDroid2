@@ -2,5 +2,6 @@
 requires = [
   "setuptools >= 40.9.0",
   "wheel",
+  "loguru"
 ]
 build-backend = "setuptools.build_meta"
