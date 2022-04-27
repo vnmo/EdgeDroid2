@@ -149,10 +149,15 @@ class FrameSet:
         init_frame = data["initial"]
         # TODO: hardcoded categories
         steps = deque()
+        repeat = init_frame
+
         for step in range(num_steps):
             step_dict = {}
             for tag in ("success", "blank", "low_confidence"):
                 step_dict[tag] = data[f"step{step:02d}_{tag}"]
+
+            step_dict["repeat"] = repeat
+            repeat = step_dict["success"]
             steps.append(step_dict)
 
         return FrameSet(name=task_name, initial_frame=init_frame, steps=steps)

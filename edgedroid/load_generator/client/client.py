@@ -97,38 +97,42 @@ class StreamSocketEmulation:
         with contextlib.closing(response_stream_unpack(sock)) as resp_stream:
             step = 0
             logger.info(f"Current step: {step}")
-            for model_frame in self._model.play():
-                # package and send the frame
-                logger.debug(
-                    f"Sending frame:\n"
-                    f"\tSeq: {model_frame.seq}\n"
-                    f"\tTag: {model_frame.frame_tag}\n"
-                    f"\tStep index: {model_frame.step_index}\n"
-                    f"\tFrame step seq: {model_frame.step_seq}"
-                )
-                payload = EdgeDroidFrame(model_frame.seq, model_frame.frame_data).pack()
-                sock.sendall(payload)
-                emit_cb(model_frame)
+            for model_step in self._model.play_steps():
+                for model_frame in model_step:
+                    # package and send the frame
+                    logger.debug(
+                        f"Sending frame:\n"
+                        f"\tSeq: {model_frame.seq}\n"
+                        f"\tTag: {model_frame.frame_tag}\n"
+                        f"\tStep index: {model_frame.step_index}\n"
+                        f"\tFrame step seq: {model_frame.step_seq}"
+                    )
+                    payload = EdgeDroidFrame(
+                        model_frame.seq, model_frame.frame_data
+                    ).pack()
+                    sock.sendall(payload)
+                    emit_cb(model_frame)
 
-                # wait for response
-                logger.debug("Waiting for response from server")
-                resp = next(resp_stream)
-                logger.debug("Received response from server")
-                resp_cb(resp)
+                    # wait for response
+                    logger.debug("Waiting for response from server")
+                    resp = next(resp_stream)
+                    logger.debug("Received response from server")
+                    resp_cb(resp)
 
-                if model_frame.frame_tag in ("success", "initial"):
-                    if resp:
-                        # if we receive a response for a success frame, advance the
-                        # model
-                        logger.info("Advancing to next step")
-                        self._model.advance_step()
-                        step += 1
-                        logger.info(f"Current step: {step}")
-                    else:
-                        logger.error(
-                            "Received unexpected unsuccessful response from server, "
-                            "aborting"
-                        )
-                        raise click.Abort()
+                    if model_frame.frame_tag in ("success", "initial"):
+                        if resp:
+                            # if we receive a response for a success frame, advance the
+                            # model
+                            logger.info("Advancing to next step")
+                            step += 1
+                            logger.info(f"Current step: {step}")
+                            break
+                        else:
+                            logger.error(
+                                "Received unexpected unsuccessful response from "
+                                "server, "
+                                "aborting"
+                            )
+                            raise click.Abort()
 
         logger.warning("Emulation finished")

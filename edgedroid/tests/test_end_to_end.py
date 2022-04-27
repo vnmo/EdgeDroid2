@@ -40,11 +40,12 @@ class EndToEndTest(unittest.TestCase):
         )
 
         task = LEGOTask(e_data.load_default_task(trace))
-        for model_frame in model.play():
-            self.assertEqual(
-                FrameResult.SUCCESS,
-                task.submit_frame(model_frame.frame_data),
-                model_frame,
-            )
-            model.advance_step()
+        for model_step in model.play_steps():
+            for model_frame in model_step:
+                self.assertEqual(
+                    FrameResult.SUCCESS,
+                    task.submit_frame(model_frame.frame_data),
+                    model_frame,
+                )
+                break  # break otherwise we'll keep replaying the success frame
         logger.success(f"Trace {trace} passed test")
