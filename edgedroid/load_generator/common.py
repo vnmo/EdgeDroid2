@@ -17,7 +17,7 @@ from __future__ import annotations
 import socket
 import struct
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Any, Generator
 
 import numpy as np
 import numpy.typing as npt
@@ -92,7 +92,7 @@ def recv_from_socket(sock: socket.SocketType, amount: int) -> bytes:
 
 def frame_stream_unpack(
     sock: socket.SocketType,
-) -> Iterator[EdgeDroidFrame]:
+) -> Generator[EdgeDroidFrame, None, None]:
     # TODO: does this need to be optimized somehow?
     logger.info("Started frame stream unpacker")
     try:
@@ -121,7 +121,7 @@ def pack_response(resp: bool) -> bytes:
 
 def response_stream_unpack(
     sock: socket.SocketType,
-) -> Iterator[bool]:
+) -> Generator[bool, None, None]:
     try:
         while True:
             resp = recv_from_socket(sock, RESP_LEN)
