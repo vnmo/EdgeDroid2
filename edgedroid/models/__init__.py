@@ -13,8 +13,9 @@
 #  limitations under the License.
 
 import time
+from collections import deque
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, List
 
 import numpy.typing as npt
 
@@ -49,6 +50,14 @@ class ModelFrame:
     frame_data: npt.NDArray
 
 
+@dataclass(frozen=True, eq=True)
+class StepRecord:
+    step_number: int
+    target_duration: float
+    actual_duration: float
+    frame_count: int
+
+
 class EdgeDroidModel:
     """
     Implements the full end-to-end emulation of a human user in Cognitive
@@ -78,6 +87,15 @@ class EdgeDroidModel:
         self._timings = timing_model
         self._frames = frame_trace
         self._frame_dists = frame_model
+        self._frame_count = 0
+        self._step_records: List[StepRecord] = []
+
+    def reset(self) -> None:
+        """
+        Resets this model.
+        """
+        self._step_records.clear()
+        self._timings.reset()
         self._frame_count = 0
 
     @property
@@ -119,9 +137,13 @@ class EdgeDroidModel:
                     An Iterator that yields appropriate video frames as numpy arrays.
                 """
 
+        self.reset()
+        step_frame_timestamps = deque()
+
         def _init_iter() -> Iterator[ModelFrame]:
             while True:
                 self._frame_count += 1
+                step_frame_timestamps.append(time.monotonic())
                 yield ModelFrame(
                     seq=self._frame_count,
                     step_seq=1,
@@ -133,13 +155,26 @@ class EdgeDroidModel:
                 )
 
         yield _init_iter()
-        prev_step_end = time.monotonic()
+
+        # TODO: check if any frames were actually emitted?
+
+        self._step_records.append(
+            StepRecord(
+                step_number=0,
+                target_duration=0,
+                actual_duration=step_frame_timestamps[-1] - step_frame_timestamps[0],
+                frame_count=len(step_frame_timestamps),
+            )
+        )
 
         for step_index in range(self.step_count):
             # get a step duration
-            delay = time.monotonic() - prev_step_end
-            self._timings.set_delay(delay)
-            step_duration = self._timings.get_execution_time()
+            # calculate delay between last submitted frame from previous step and now
+            delay = time.monotonic() - step_frame_timestamps[-1]
+            step_duration = self._timings.set_delay(delay).get_execution_time()
+
+            # clear the frame timestamp buffer
+            step_frame_timestamps.clear()
 
             def _frame_iter_for_step() -> Iterator[ModelFrame]:
                 # replay frames for step
@@ -149,6 +184,8 @@ class EdgeDroidModel:
                     )
                 ):
                     self._frame_count += 1
+                    # record frame emission timestamp
+                    step_frame_timestamps.append(time.monotonic())
                     yield ModelFrame(
                         seq=self._frame_count,
                         step_seq=seq + 1,
@@ -160,4 +197,12 @@ class EdgeDroidModel:
                     )
 
             yield _frame_iter_for_step()
-            prev_step_end = time.monotonic()
+            self._step_records.append(
+                StepRecord(
+                    step_number=step_index + 1,
+                    target_duration=step_duration,
+                    actual_duration=step_frame_timestamps[-1]
+                    - step_frame_timestamps[0],
+                    frame_count=len(step_frame_timestamps),
+                )
+            )

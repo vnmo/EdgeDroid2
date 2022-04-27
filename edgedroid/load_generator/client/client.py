@@ -95,9 +95,8 @@ class StreamSocketEmulation:
 
         logger.warning("Starting emulation")
         with contextlib.closing(response_stream_unpack(sock)) as resp_stream:
-            step = 0
-            logger.info(f"Current step: {step}")
-            for model_step in self._model.play_steps():
+            for step_num, model_step in enumerate(self._model.play_steps()):
+                logger.info(f"Current step: {step_num}")
                 for model_frame in model_step:
                     # package and send the frame
                     logger.debug(
@@ -124,14 +123,11 @@ class StreamSocketEmulation:
                             # if we receive a response for a success frame, advance the
                             # model
                             logger.info("Advancing to next step")
-                            step += 1
-                            logger.info(f"Current step: {step}")
                             break
                         else:
                             logger.error(
                                 "Received unexpected unsuccessful response from "
-                                "server, "
-                                "aborting"
+                                "server, aborting"
                             )
                             raise click.Abort()
 

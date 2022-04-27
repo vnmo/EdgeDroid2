@@ -178,7 +178,7 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         return self.get_execution_time()
 
     @abc.abstractmethod
-    def set_delay(self, delay: float | int) -> None:
+    def set_delay(self, delay: float | int) -> ExecutionTimeModel:
         """
         Update the internal delay of this model.
 
@@ -187,7 +187,7 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         delay
             A delay expressed in seconds.
         """
-        pass
+        return self
 
     @abc.abstractmethod
     def get_execution_time(self) -> float:
@@ -229,9 +229,9 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
         super(ConstantExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
 
-    def set_delay(self, delay: float | int) -> None:
+    def set_delay(self, delay: float | int) -> ExecutionTimeModel:
         # no-op
-        pass
+        return self
 
     def get_execution_time(self) -> float:
         return self._exec_time
@@ -350,7 +350,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         ][0]
         self._transition = Transition.NONE
 
-    def set_delay(self, delay: float | int) -> None:
+    def set_delay(self, delay: float | int) -> ExecutionTimeModel:
         self._seq += 1
         self._delay = delay
         new_impairment = self._impairment_bins[self._impairment_bins.contains(delay)][0]
@@ -374,6 +374,8 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             self._duration_bins.contains(self._duration)
         ][0]
         self._impairment = new_impairment
+
+        return self
 
     def get_execution_time(self) -> float:
         # get the appropriate data view
