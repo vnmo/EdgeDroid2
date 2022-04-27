@@ -14,10 +14,11 @@
 
 import time
 from collections import deque
-from dataclasses import dataclass
-from typing import Iterator, List
+from dataclasses import asdict, dataclass
+from typing import Dict, Iterator, List
 
 import numpy.typing as npt
+import pandas as pd
 
 from .frames import FrameModel, FrameSet
 from .timings import (
@@ -56,6 +57,9 @@ class StepRecord:
     target_duration: float
     actual_duration: float
     frame_count: int
+
+    def to_dict(self) -> Dict[str, int | float]:
+        return asdict(self)
 
 
 class EdgeDroidModel:
@@ -97,6 +101,11 @@ class EdgeDroidModel:
         self._step_records.clear()
         self._timings.reset()
         self._frame_count = 0
+
+    def model_step_metrics(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            [a.to_dict() for a in self._step_records],
+        ).set_index("step_number")
 
     @property
     def step_count(self) -> int:
@@ -161,7 +170,7 @@ class EdgeDroidModel:
         self._step_records.append(
             StepRecord(
                 step_number=0,
-                target_duration=0,
+                target_duration=0.0,
                 actual_duration=step_frame_timestamps[-1] - step_frame_timestamps[0],
                 frame_count=len(step_frame_timestamps),
             )

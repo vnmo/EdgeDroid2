@@ -17,6 +17,7 @@ import socket
 from typing import Callable, Literal
 
 import click
+import pandas as pd
 from loguru import logger
 
 from ..common import EdgeDroidFrame, response_stream_unpack
@@ -72,6 +73,9 @@ class StreamSocketEmulation:
         self._model = EdgeDroidModel(
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
         )
+
+    def get_step_metrics(self) -> pd.DataFrame:
+        return self._model.model_step_metrics()
 
     def emulate(
         self,

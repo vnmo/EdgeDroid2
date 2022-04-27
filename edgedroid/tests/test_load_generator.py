@@ -235,7 +235,7 @@ class TestEmulation(unittest.TestCase):
 
             emulation.emulate(csock, emit_cb=emit_callback, resp_cb=result_callback)
 
-            # close client first, to make sure no exceptions ocur in server
+            # close client first, to make sure no exceptions occur in server
             csock.close()
             try:
                 # callback to check for exceptions in server loop
@@ -248,3 +248,7 @@ class TestEmulation(unittest.TestCase):
             # closing should have triggered the server loop to end gracefully
             server_t.join(timeout=0.1)
             ssock.close()
+
+            # finally, output the timing metrics dataframe for manual debugging
+            logger.info(f"Step metrics:\n{emulation.get_step_metrics()}")
+            logger.success("Finished")

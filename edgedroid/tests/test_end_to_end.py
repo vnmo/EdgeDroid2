@@ -49,3 +49,4 @@ class EndToEndTest(unittest.TestCase):
                 )
                 break  # break otherwise we'll keep replaying the success frame
         logger.success(f"Trace {trace} passed test")
+        logger.debug(f"Step metrics:\n{model.model_step_metrics()}")
