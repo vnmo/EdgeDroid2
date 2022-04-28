@@ -11,9 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import pathlib
 import socket
-from typing import Literal
+from typing import Literal, Optional
 
 import click
 from loguru import logger
@@ -61,6 +61,22 @@ from ..common_cli import enable_logging
     "'theoretical' first fits distributions to the data and then samples.",
 )
 @click.option(
+    "-o",
+    "--output",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        writable=True,
+        resolve_path=True,
+        path_type=pathlib.Path,
+    ),
+    default=None,
+    show_default=False,
+    help="Specifies a path on which to output step metrics in CSV format."
+    "If not specified (the default), summary metrics are instead output to "
+    "standard output.",
+)
+@click.option(
     "-v",
     "--verbose",
     type=bool,
@@ -77,6 +93,7 @@ def edgedroid_client(
     fade_distance: int,
     model: Literal["empirical", "theoretical"],
     verbose: bool,
+    output: Optional[pathlib.Path] = None,
 ):
     """
     Run an EdgeDroid2 client.
@@ -115,3 +132,25 @@ def edgedroid_client(
         # these are tcp sockets, so no timeouts are needed
 
         emulation.emulate(sock)
+
+    step_metrics = emulation.get_step_metrics()
+    if output is not None:
+        logger.info(f"Writing step metrics to {output}")
+        step_metrics.to_csv(output)
+    else:
+        task_duration = (
+            step_metrics.at[-1, "step_end_monotonic"]
+            - step_metrics.at[0, "step_start_monotonic"]
+        )
+
+        avg_diff = (step_metrics.actual_duration - step_metrics.target_duration).mean()
+
+        click.echo(
+            f"""
+Emulation metrics:
+- Total task duration: {task_duration:.02f} s
+- Number of steps: {len(step_metrics.index)}
+- Mean step duration: {step_metrics.actual_duration.mean():.02f} s
+- Mean absolute difference between target and actual step duration: {avg_diff:.02f} s
+            """
+        )

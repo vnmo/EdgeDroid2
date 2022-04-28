@@ -54,6 +54,10 @@ class ModelFrame:
 @dataclass(frozen=True, eq=True)
 class StepRecord:
     step_number: int
+    step_start: float
+    step_start_monotonic: float
+    step_end: float
+    step_end_monotonic: float
     target_duration: float
     actual_duration: float
     frame_count: int
@@ -152,7 +156,7 @@ class EdgeDroidModel:
         def _init_iter() -> Iterator[ModelFrame]:
             while True:
                 self._frame_count += 1
-                step_frame_timestamps.append(time.monotonic())
+                step_frame_timestamps.append((time.time(), time.monotonic()))
                 yield ModelFrame(
                     seq=self._frame_count,
                     step_seq=1,
@@ -167,11 +171,18 @@ class EdgeDroidModel:
 
         # TODO: check if any frames were actually emitted?
 
+        step_start, step_start_mono = step_frame_timestamps[0]
+        step_end, step_end_mono = step_frame_timestamps[-1]
+
         self._step_records.append(
             StepRecord(
                 step_number=0,
                 target_duration=0.0,
-                actual_duration=step_frame_timestamps[-1] - step_frame_timestamps[0],
+                step_start=step_start,
+                step_start_monotonic=step_start_mono,
+                step_end=step_end,
+                step_end_monotonic=step_end_mono,
+                actual_duration=step_end_mono - step_start_mono,
                 frame_count=len(step_frame_timestamps),
             )
         )
@@ -179,7 +190,7 @@ class EdgeDroidModel:
         for step_index in range(self.step_count):
             # get a step duration
             # calculate delay between last submitted frame from previous step and now
-            delay = time.monotonic() - step_frame_timestamps[-1]
+            delay = time.monotonic() - step_frame_timestamps[-1][-1]
             step_duration = self._timings.set_delay(delay).get_execution_time()
 
             # clear the frame timestamp buffer
@@ -194,7 +205,7 @@ class EdgeDroidModel:
                 ):
                     self._frame_count += 1
                     # record frame emission timestamp
-                    step_frame_timestamps.append(time.monotonic())
+                    step_frame_timestamps.append((time.time(), time.monotonic()))
                     yield ModelFrame(
                         seq=self._frame_count,
                         step_seq=seq + 1,
@@ -206,12 +217,17 @@ class EdgeDroidModel:
                     )
 
             yield _frame_iter_for_step()
+            step_start, step_start_mono = step_frame_timestamps[0]
+            step_end, step_end_mono = step_frame_timestamps[-1]
             self._step_records.append(
                 StepRecord(
                     step_number=step_index + 1,
                     target_duration=step_duration,
-                    actual_duration=step_frame_timestamps[-1]
-                    - step_frame_timestamps[0],
+                    step_start=step_start,
+                    step_start_monotonic=step_start_mono,
+                    step_end=step_end,
+                    step_end_monotonic=step_end_mono,
+                    actual_duration=step_end_mono - step_start_mono,
                     frame_count=len(step_frame_timestamps),
                 )
             )
