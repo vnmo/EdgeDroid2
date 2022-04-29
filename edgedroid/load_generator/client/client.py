@@ -31,6 +31,8 @@ from ...models import (
     TheoreticalExecutionTimeModel,
 )
 
+import numpy.typing as npt
+
 
 class StreamSocketEmulation:
     def __init__(
@@ -81,7 +83,7 @@ class StreamSocketEmulation:
         self,
         sock: socket.SocketType,
         emit_cb: Callable[[ModelFrame], None] = lambda _: None,
-        resp_cb: Callable[[bool], None] = lambda _: None,
+        resp_cb: Callable[[bool, npt.NDArray, str], None] = lambda _: None,
     ) -> None:
         """
         # TODO: document
@@ -116,15 +118,16 @@ class StreamSocketEmulation:
 
                     # wait for response
                     logger.debug("Waiting for response from server")
-                    resp = next(resp_stream)
+                    transition, guidance_img, guidance_text = next(resp_stream)
                     logger.debug("Received response from server")
-                    resp_cb(resp)
+                    logger.info(f"Guidance: {guidance_text}")
+                    resp_cb(transition, guidance_img, guidance_text)
 
                     if model_frame.frame_tag in ("success", "initial"):
-                        if resp:
+                        if transition:
                             # if we receive a response for a success frame, advance the
                             # model
-                            logger.info("Advancing to next step")
+                            logger.success("Advancing to next step")
                             break
                         else:
                             logger.error(

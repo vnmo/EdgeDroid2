@@ -226,7 +226,7 @@ class TestEmulation(unittest.TestCase):
                 except queue.Empty:
                     pass
 
-            def result_callback(result: bool) -> None:
+            def result_callback(t: bool, i: Any, s: str) -> None:
                 frame_result = server_t.get_result_queue().get_nowait()
                 expecter.check_result(frame_result)
                 try:

@@ -129,26 +129,26 @@ class EdgeDroidModel:
 
         """
 
-        """
-                Run this model.
-
-                This function returns an iterator yielding video frames for each
-                instant in the emulation. Example usage::
-
-                    model = EdgeDroidModel(...)
-                    for frame in model.play():
-                        result = send_frame_to_backend(frame)
-                        ...
-
-
-                This iterator maintains an internal state of the task and
-                automatically produces realistic frames and timings.
-
-                Returns
-                -------
-                Iterator
-                    An Iterator that yields appropriate video frames as numpy arrays.
-                """
+        # """
+        #         Run this model.
+        #
+        #         This function returns an iterator yielding video frames for each
+        #         instant in the emulation. Example usage::
+        #
+        #             model = EdgeDroidModel(...)
+        #             for frame in model.play():
+        #                 result = send_frame_to_backend(frame)
+        #                 ...
+        #
+        #
+        #         This iterator maintains an internal state of the task and
+        #         automatically produces realistic frames and timings.
+        #
+        #         Returns
+        #         -------
+        #         Iterator
+        #             An Iterator that yields appropriate video frames as numpy arrays.
+        #         """
 
         self.reset()
         step_frame_timestamps = deque()
