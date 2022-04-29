@@ -70,11 +70,9 @@ from ..common_cli import enable_logging
         resolve_path=True,
         path_type=pathlib.Path,
     ),
-    default=None,
-    show_default=False,
-    help="Specifies a path on which to output step metrics in CSV format."
-    "If not specified (the default), summary metrics are instead output to "
-    "standard output.",
+    default="./client_records.csv",
+    show_default=True,
+    help="Specifies a path on which to output step metrics in CSV format.",
 )
 @click.option(
     "-v",
@@ -93,7 +91,7 @@ def edgedroid_client(
     fade_distance: int,
     model: Literal["empirical", "theoretical"],
     verbose: bool,
-    output: Optional[pathlib.Path] = None,
+    output: pathlib.Path,
 ):
     """
     Run an EdgeDroid2 client.
@@ -134,23 +132,5 @@ def edgedroid_client(
         emulation.emulate(sock)
 
     step_metrics = emulation.get_step_metrics()
-    if output is not None:
-        logger.info(f"Writing step metrics to {output}")
-        step_metrics.to_csv(output)
-    else:
-        task_duration = (
-            step_metrics.at[-1, "step_end_monotonic"]
-            - step_metrics.at[0, "step_start_monotonic"]
-        )
-
-        avg_diff = (step_metrics.actual_duration - step_metrics.target_duration).mean()
-
-        click.echo(
-            f"""
-Emulation metrics:
-- Total task duration: {task_duration:.02f} s
-- Number of steps: {len(step_metrics.index)}
-- Mean step duration: {step_metrics.actual_duration.mean():.02f} s
-- Mean absolute difference between target and actual step duration: {avg_diff:.02f} s
-            """
-        )
+    logger.info(f"Writing step metrics to {output}")
+    step_metrics.to_csv(output)

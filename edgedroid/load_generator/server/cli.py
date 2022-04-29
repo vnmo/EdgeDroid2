@@ -11,6 +11,8 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+import pathlib
+from typing import Optional
 
 import click
 from .server import serve_LEGO_task
@@ -32,6 +34,20 @@ from ..common_cli import enable_logging
     help="Serve a single client and then exit.",
 )
 @click.option(
+    "-o",
+    "--output",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        writable=True,
+        resolve_path=True,
+        path_type=pathlib.Path,
+    ),
+    default="./server_records.csv",
+    show_default=True,
+    help="Specifies a path on which to output processed frame metrics in CSV format.",
+)
+@click.option(
     "-v",
     "--verbose",
     type=bool,
@@ -46,6 +62,7 @@ def edgedroid_server(
     task_name: str,
     one_shot: bool,
     verbose: bool,
+    output: pathlib.Path,
 ):
     """
     Run an EdgeDroid2 server based on Gabriel-LEGO.
@@ -55,5 +72,9 @@ def edgedroid_server(
     """
     enable_logging(verbose)
     serve_LEGO_task(
-        task=task_name, port=bind_port, bind_address=bind_address, one_shot=one_shot
+        task=task_name,
+        port=bind_port,
+        bind_address=bind_address,
+        one_shot=one_shot,
+        output_path=output,
     )
