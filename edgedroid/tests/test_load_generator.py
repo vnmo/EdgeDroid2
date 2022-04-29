@@ -23,6 +23,8 @@ from functools import wraps
 from threading import Event, Thread
 from typing import Any, Callable, Iterator, Optional, Tuple
 
+import numpy as np
+from numpy import testing as nptest
 from gabriel_lego import FrameResult
 from loguru import logger
 
@@ -100,16 +102,6 @@ class BytesSocketClient(contextlib.AbstractContextManager, Thread):
 
 class TestCommon(unittest.TestCase):
     @log_test
-    def test_individual_packing_frames(self) -> None:
-        frames = load_default_trace("test")
-        for i in range(frames.step_count):
-            frame_data = frames.get_frame(i, "success")
-            eframe1 = common.EdgeDroidFrame(i + 1, frame_data)
-            eframe2 = common.EdgeDroidFrame.unpack(eframe1.pack())
-
-            self.assertEqual(eframe1, eframe2)
-
-    @log_test
     def test_stream_packing_frames(self) -> None:
         frames = load_default_trace("test")
         with contextlib.ExitStack() as stack:
@@ -121,28 +113,39 @@ class TestCommon(unittest.TestCase):
 
             for i in range(frames.step_count):
                 logger.debug(f"Sending frame {i}...")
-                frame_data = frames.get_frame(i, "success")
-                frame = common.EdgeDroidFrame(i + 1, frame_data)
-                client.send(frame.pack())
+                frame = frames.get_frame(i, "success")
+                client.send(common.pack_frame(i + 1, frame))
 
                 # check server side
                 logger.debug("Unpacking server side...")
-                self.assertEqual(frame, next(stream))
+                recv_seq, recv_img = next(stream)
+                self.assertEqual(i + 1, recv_seq)
+                nptest.assert_array_equal(frame, recv_img)
 
     @log_test
     def test_packing_responses(self) -> None:
+        rng = np.random.default_rng()
+        test_image = rng.integers(low=0, high=256, size=(100, 100, 3), dtype=np.uint8)
+        test_text = "the quick brown fox jumps over the lazy dog"
+
         with contextlib.ExitStack() as stack:
+
             csock, ssock = stack.enter_context(client_server_sockets(timeout=0.250))
             stream = stack.enter_context(
                 contextlib.closing(common.response_stream_unpack(ssock))
             )
             client = stack.enter_context(BytesSocketClient(csock))
 
-            for resp in (True, False):
-                logger.debug(f"Sending response {resp}...")
-                client.send(common.pack_response(resp))
+            for t in (True, False):
+                logger.debug(f"Sending response with transition: {t}")
+                response = (t, test_image, test_text)
+                client.send(common.pack_response(*response))
                 logger.debug(f"Unpacking server side...")
-                self.assertEqual(resp, next(stream))
+
+                recv_t, recv_img, recv_text = next(stream)
+                self.assertEqual(t, recv_t)
+                self.assertEqual(test_text, recv_text)
+                nptest.assert_array_equal(test_image, recv_img)
 
 
 class TestServer(contextlib.AbstractContextManager, Thread):

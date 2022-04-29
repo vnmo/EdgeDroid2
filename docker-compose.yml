@@ -1,0 +1,41 @@
+---
+version: "3"
+services:
+  server:
+    image: molguin/edgedroid2:server
+    container_name: server
+    hostname: server
+    volumes:
+      - "./results:/opt/results:rw"
+    command:
+      - "--one-shot"
+      - "--output"
+      - "/opt/results/server.csv"
+      - "--verbose"
+      - "0.0.0.0"
+      - "5000"
+      - "square00"
+    restart: "no"
+  client:
+    image: molguin/edgedroid2:client
+    container_name: client
+    hostname: client
+    volumes:
+      - "./results:/opt/results:rw"
+    command:
+      - "-n"
+      - "0.5"
+      - "-t"
+      - "square00"
+      - "-f"
+      - "8"
+      - "-m"
+      - "empirical"
+      - "-o"
+      - "/opt/results/client.csv"
+      - "--verbose"
+      - "server"
+      - "5000"
+    depends_on:
+      - server
+    restart: "no"

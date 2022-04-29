@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 from __future__ import annotations
+
 import contextlib
 import pathlib
 import queue
@@ -20,14 +21,14 @@ import threading
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
-from typing import Any, Callable, Dict, Iterator, Tuple
+from typing import Callable, Dict, Iterator, Tuple
 
 import pandas as pd
 from gabriel_lego import FrameResult, LEGOTask
+from loguru import logger
 
 from ..common import frame_stream_unpack, pack_response
 from ... import data as e_data
-from loguru import logger
 
 
 @dataclass(frozen=True, eq=True)
@@ -55,12 +56,12 @@ def server(
     task = LEGOTask(e_data.load_default_task(task_name))
 
     with contextlib.closing(frame_stream_unpack(sock)) as frame_stream:
-        for frame in frame_stream:
+        for seq, image_data in frame_stream:
             recv_time_mono = time.monotonic()
             recv_time = time.time()
 
-            logger.info(f"Received frame with SEQ {frame.seq}")
-            result = task.submit_frame(frame.image_data)
+            logger.info(f"Received frame with SEQ {seq}")
+            result = task.submit_frame(image_data)
 
             proc_time_mono = time.monotonic()
             proc_time = time.time()
@@ -70,17 +71,24 @@ def server(
 
             if result == FrameResult.SUCCESS:
                 logger.success(
-                    f"Frame with SEQ {frame.seq} triggers advancement to next step"
+                    f"Frame with SEQ {seq} triggers advancement to next step"
                 )
-                sock.sendall(pack_response(True))
-                # TODO: need a more thorough response?
+                transition = True
             else:
-                sock.sendall(pack_response(False))
+                transition = False
+
+            sock.sendall(
+                pack_response(
+                    transition,
+                    task.get_current_guide_illustration(),
+                    task.get_current_instruction(),
+                )
+            )
 
             # finally, store frame record
             records.append(
                 FrameRecord(
-                    seq=frame.seq,
+                    seq=seq,
                     result=result,
                     received=recv_time,
                     received_monotonic=recv_time_mono,
@@ -147,6 +155,8 @@ class WritingThread(threading.Thread, contextlib.AbstractContextManager):
 
                     # got records
                     fp.seek(0)
+
+                    # TODO: fix first read
                     data = pd.concat((pd.read_csv(fp), records), ignore_index=False)
                     fp.seek(0)
                     data.to_csv(fp, index=True, header=True)

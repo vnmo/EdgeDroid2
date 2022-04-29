@@ -16,19 +16,30 @@ from __future__ import annotations
 
 import socket
 import struct
-from dataclasses import dataclass
-from typing import Any, Generator
+from typing import Generator, NamedTuple, Tuple
 
 import numpy as np
 import numpy.typing as npt
 from loguru import logger
 
-HEADER_PACK_FMT = "!IIIII"  # [seq][height][width][channels][data length]
+HEADER_PACK_FMT = "!5I"  # [seq][height][width][channels][data length]
 HEADER_LEN = struct.calcsize(HEADER_PACK_FMT)
 IMG_BYTES_ORDER = "C"
 
-RESP_PACK_FMT = "!?"
+RESP_PACK_FMT = "!?5I"
+# [success][height][width][channels][img data length][text data length]
 RESP_LEN = struct.calcsize(RESP_PACK_FMT)
+
+
+class Frame(NamedTuple):
+    seq: int
+    image_data: npt.NDArray
+
+
+class Response(NamedTuple):
+    transition: bool
+    image_guidance: npt.NDArray
+    text_guidance: str
 
 
 def bytes_to_numpy_image(
@@ -37,45 +48,6 @@ def bytes_to_numpy_image(
     return np.frombuffer(data, dtype=np.uint8).reshape(
         (height, width, channels), order=IMG_BYTES_ORDER
     )
-
-
-@dataclass
-class EdgeDroidFrame:
-    seq: int
-    image_data: npt.NDArray
-
-    def __eq__(self, other: Any):
-        if not isinstance(other, EdgeDroidFrame):
-            return False
-        else:
-            return self.seq == other.seq and (
-                np.all(self.image_data == other.image_data)
-            )
-
-    def __post_init__(self):
-        assert self.image_data.ndim == 3
-
-    def pack(self) -> bytes:
-        height, width, channels = self.image_data.shape
-        img_data = self.image_data.tobytes(order=IMG_BYTES_ORDER)
-        data_len = len(img_data)
-
-        hdr = struct.pack(HEADER_PACK_FMT, self.seq, height, width, channels, data_len)
-
-        return hdr + img_data
-
-    @classmethod
-    def unpack(cls, data: bytes) -> EdgeDroidFrame:
-        hdr = data[:HEADER_LEN]
-        seq, height, width, channels, data_len = struct.unpack(HEADER_PACK_FMT, hdr)
-        image_data = bytes_to_numpy_image(
-            data[HEADER_LEN : HEADER_LEN + data_len],
-            width=width,
-            height=height,
-            channels=channels,
-        )
-
-        return cls(seq, image_data)
 
 
 def recv_from_socket(sock: socket.SocketType, amount: int) -> bytes:
@@ -90,9 +62,17 @@ def recv_from_socket(sock: socket.SocketType, amount: int) -> bytes:
     return received
 
 
+def pack_frame(seq: int, image_frame: npt.NDArray) -> bytes:
+    height, width, channels = image_frame.shape
+    img_data = image_frame.tobytes(order=IMG_BYTES_ORDER)
+    data_len = len(img_data)
+    hdr = struct.pack(HEADER_PACK_FMT, seq, height, width, channels, data_len)
+    return hdr + img_data
+
+
 def frame_stream_unpack(
     sock: socket.SocketType,
-) -> Generator[EdgeDroidFrame, None, None]:
+) -> Generator[Frame, None, None]:
     # TODO: does this need to be optimized somehow?
     logger.info("Started frame stream unpacker")
     try:
@@ -108,24 +88,49 @@ def frame_stream_unpack(
 
             # got all the data!
             image = bytes_to_numpy_image(image_data, height, width, channels)
-            yield EdgeDroidFrame(seq, image)
+            yield Frame(seq, image)
     except EOFError:
         logger.warning("Socket was closed")
     finally:
         logger.debug("Closing frame stream unpacker")
 
 
-def pack_response(resp: bool) -> bytes:
-    return struct.pack(RESP_PACK_FMT, resp)
+def pack_response(
+    transition: bool, image_guidance: npt.NDArray, text_guidance: str
+) -> bytes:
+    height, width, channels = image_guidance.shape
+    img_data = image_guidance.tobytes(order=IMG_BYTES_ORDER)
+    img_len = len(img_data)
+
+    text_data = text_guidance.encode("utf8")
+    text_len = len(text_data)
+
+    header = struct.pack(
+        RESP_PACK_FMT, transition, height, width, channels, img_len, text_len
+    )
+
+    return header + img_data + text_data
 
 
 def response_stream_unpack(
     sock: socket.SocketType,
-) -> Generator[bool, None, None]:
+) -> Generator[Response, None, None]:
     try:
         while True:
-            resp = recv_from_socket(sock, RESP_LEN)
-            yield struct.unpack(RESP_PACK_FMT, resp)[0]  # unpack always returns tuples
+            resp_header = recv_from_socket(sock, RESP_LEN)
+
+            # unpack the header into its constituent parts
+            transition, height, width, channels, img_len, text_len = struct.unpack(
+                RESP_PACK_FMT, resp_header
+            )
+
+            img_data = recv_from_socket(sock, img_len)
+            text_data = recv_from_socket(sock, text_len)
+
+            guidance_image = bytes_to_numpy_image(img_data, height, width, channels)
+            guidance_text = text_data.decode("utf8")
+
+            yield transition, guidance_image, guidance_text
     except EOFError:
         logger.warning("Socket was closed")
     finally:

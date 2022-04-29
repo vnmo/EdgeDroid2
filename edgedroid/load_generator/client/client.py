@@ -20,7 +20,7 @@ import click
 import pandas as pd
 from loguru import logger
 
-from ..common import EdgeDroidFrame, response_stream_unpack
+from ..common import response_stream_unpack, pack_frame
 from ... import data as e_data
 from ...models import (
     EdgeDroidModel,
@@ -110,9 +110,7 @@ class StreamSocketEmulation:
                         f"\tStep index: {model_frame.step_index}\n"
                         f"\tFrame step seq: {model_frame.step_seq}"
                     )
-                    payload = EdgeDroidFrame(
-                        model_frame.seq, model_frame.frame_data
-                    ).pack()
+                    payload = pack_frame(model_frame.seq, model_frame.frame_data)
                     sock.sendall(payload)
                     emit_cb(model_frame)
 
