@@ -156,8 +156,12 @@ class WritingThread(threading.Thread, contextlib.AbstractContextManager):
                     # got records
                     fp.seek(0)
 
-                    # TODO: fix first read
-                    data = pd.concat((pd.read_csv(fp), records), ignore_index=False)
+                    try:
+                        data = pd.concat((pd.read_csv(fp), records), ignore_index=False)
+                    except pd.errors.EmptyDataError:
+                        # empty file, guess we have just begun writing
+                        data = records
+
                     fp.seek(0)
                     data.to_csv(fp, index=True, header=True)
                     fp.flush()
