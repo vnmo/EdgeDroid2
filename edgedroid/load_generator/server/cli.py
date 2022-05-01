@@ -12,9 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import pathlib
-from typing import Optional
 
 import click
+
 from .server import serve_LEGO_task
 from ..common_cli import enable_logging
 
@@ -27,11 +27,11 @@ from ..common_cli import enable_logging
 )
 @click.argument("task-name", type=str)
 @click.option(
-    "--one-shot",
+    "--one-shot/--multi-run",
     is_flag=True,
     default=True,
     show_default=True,
-    help="Serve a single client and then exit.",
+    help="Serve a single client and then exit, or stay listening for multiple runs.",
 )
 @click.option(
     "-o",

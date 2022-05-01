@@ -106,6 +106,7 @@ def server(
 def accept_context(
     sock: socket.SocketType,
 ) -> Iterator[Tuple[socket.SocketType, Tuple[str, int]]]:
+    logger.info("Waiting for connections...")
     conn, (peer_addr, peer_port) = sock.accept()
     logger.info(f"Opened connection to {peer_addr}:{peer_port}")
     try:
@@ -189,6 +190,7 @@ def serve_LEGO_task(
         wt: WritingThread = stack.enter_context(WritingThread(output_path=output_path))
 
         logger.info(f"Serving LEGO task {task} on {bind_address}:{port}/tcp")
+        logger.debug(f"One-shot mode: {'on' if one_shot else 'off'}")
         try:
             clients_served = 0
             while True:
