@@ -18,7 +18,7 @@ from loguru import logger
 
 from .. import data as e_data
 from ..models import EdgeDroidModel, FrameModel
-from ..models.timings import ConstantExecutionTimeModel
+from ..models.timings import NaiveExecutionTimeModel
 from gabriel_lego.api import FrameResult, LEGOTask
 
 
@@ -33,7 +33,7 @@ class EndToEndTest(unittest.TestCase):
         frameset = e_data.load_default_trace(trace)
         frame_model = FrameModel(e_data.load_default_frame_probabilities())
 
-        timing_model = ConstantExecutionTimeModel(0)
+        timing_model = NaiveExecutionTimeModel(0)
 
         model = EdgeDroidModel(
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model

@@ -220,13 +220,37 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         pass
 
 
-class ConstantExecutionTimeModel(ExecutionTimeModel):
+class NaiveExecutionTimeModel(ExecutionTimeModel):
     """
-    Returns a constant execution time. Intended for testing purposes.
+    Returns a constant execution time.
     """
 
+    @classmethod
+    def from_default_data(cls) -> ExecutionTimeModel:
+        """
+        Builds a naive model from the default data, using the average execution time
+        as the execution time for the model.
+
+        Returns
+        -------
+        ExecutionTimeModel
+            A naive execution time model.
+        """
+
+        # TODO: should this model be more complex? Maybe use a (simple) distribution?
+
+        from .. import data as e_data
+
+        data = preprocess_data(
+            *e_data.load_default_exec_time_data(),
+            transition_fade_distance=None,
+        )
+
+        exec_time = data.next_exec_time.mean()
+        return cls(exec_time)
+
     def __init__(self, execution_time_seconds: float):
-        super(ConstantExecutionTimeModel, self).__init__()
+        super(NaiveExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
 
     def set_delay(self, delay: float | int) -> ExecutionTimeModel:
