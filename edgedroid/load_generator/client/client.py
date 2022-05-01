@@ -83,7 +83,7 @@ class StreamSocketEmulation:
         self,
         sock: socket.SocketType,
         emit_cb: Callable[[ModelFrame], None] = lambda _: None,
-        resp_cb: Callable[[bool, npt.NDArray, str], None] = lambda _: None,
+        resp_cb: Callable[[bool, npt.NDArray, str], None] = lambda t, i, s: None,
     ) -> None:
         """
         # TODO: document
