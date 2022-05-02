@@ -1,15 +1,20 @@
-BUILD_CMD = docker build
-IMG_TAG = molguin/edgedroid2
+BUILD_CMD = docker buildx build --push --platform linux/arm64,linux/arm/v7,linux/amd64,
+DOCKER_USER = molguin
+IMG_REPO = $(DOCKER_USER)/edgedroid2
 
-all: server client
+all: server client login
 .PHONY: all clean
 
+login:
+	docker login -u $(DOCKER_USER)
+
 server: Dockerfile.server
-	$(BUILD_CMD) -t $(IMG_TAG):server -f $^ .
+	$(BUILD_CMD) -t $(IMG_REPO):server -f $^ .
 
 client: Dockerfile.client
-	$(BUILD_CMD) -t $(IMG_TAG):client -f $^ .
+	$(BUILD_CMD) -t $(IMG_REPO):client -f $^ .
 
 clean:
-	docker image rm $(IMG_TAG):client
-	docker image rm $(IMG_TAG):server
+	docker image rm $(IMG_REPO):client
+	docker image rm $(IMG_REPO):server
+	docker logout
