@@ -21,6 +21,7 @@ import pandas as pd
 import pooch
 from pandas import arrays
 import numpy.typing as npt
+from loguru import logger
 
 __all__ = [
     "load_default_frame_probabilities",
@@ -81,10 +82,17 @@ def load_default_frame_probabilities() -> pd.DataFrame:
 
 
 def load_default_trace(trace_name: str) -> FrameSet:
+    logger.debug(
+        f"Loading default trace '{trace_name}' "
+        f"with known hash {_default_traces[trace_name]}"
+    )
+
     trace_url = (
         f"https://github.com/molguin92/EdgeDroid2/releases/download"
         f"/v1.0.0-traces/{trace_name}.npz"
     )
+    logger.debug(f"Attempting to fetch trace from {trace_url} if necessary")
+
     trace_path = pooch.retrieve(
         url=trace_url, known_hash=_default_traces[trace_name], progressbar=True
     )
