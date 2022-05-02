@@ -1,4 +1,4 @@
-BUILD_CMD = docker buildx build --push --platform linux/arm64,linux/arm/v7,linux/amd64
+BUILD_CMD = docker buildx build --push --platform linux/arm64,linux/amd64
 DOCKER_USER = molguin
 IMG_REPO = $(DOCKER_USER)/edgedroid2
 
