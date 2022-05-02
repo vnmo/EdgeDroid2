@@ -208,17 +208,47 @@ class TestEmulation(unittest.TestCase):
         logger.remove()
         logger.add(sys.stderr, level="INFO", colorize=True)
 
-        emulation = StreamSocketEmulation(
-            neuroticism=0.5, trace="test", fade_distance=4, model="empirical"
-        )
+        # invalid model name
+        with self.assertRaises(NotImplementedError):
+            StreamSocketEmulation(
+                neuroticism=0.5, trace="test", fade_distance=4, model="foobar"
+            )
 
-        with client_server_sockets(timeout=1.0) as (csock, ssock):
-            server_t = TestServer("test", ssock)
-            server_t.start()
-            expecter = FrameResultExpecter(self)
+        # test all three models
+        for model in ("empirical", "theoretical", "naive"):
+            logger.info(f"Trying model: {model}")
+            emulation = StreamSocketEmulation(
+                neuroticism=0.5, trace="test", fade_distance=4, model=model
+            )
 
-            def emit_callback(frame: ModelFrame) -> None:
-                expecter.set_expected(frame.frame_tag)
+            with client_server_sockets(timeout=1.0) as (csock, ssock):
+                server_t = TestServer("test", ssock)
+                server_t.start()
+                expecter = FrameResultExpecter(self)
+
+                def emit_callback(frame: ModelFrame) -> None:
+                    expecter.set_expected(frame.frame_tag)
+                    try:
+                        # callback to check for exceptions in server loop
+                        exc = server_t.get_exc_queue().get_nowait()
+                        raise exc
+                    except queue.Empty:
+                        pass
+
+                def result_callback(t: bool, i: Any, s: str) -> None:
+                    frame_result = server_t.get_result_queue().get_nowait()
+                    expecter.check_result(frame_result)
+                    try:
+                        # callback to check for exceptions in server loop
+                        exc = server_t.get_exc_queue().get_nowait()
+                        raise exc
+                    except queue.Empty:
+                        pass
+
+                emulation.emulate(csock, emit_cb=emit_callback, resp_cb=result_callback)
+
+                # close client first, to make sure no exceptions occur in server
+                csock.close()
                 try:
                     # callback to check for exceptions in server loop
                     exc = server_t.get_exc_queue().get_nowait()
@@ -226,32 +256,11 @@ class TestEmulation(unittest.TestCase):
                 except queue.Empty:
                     pass
 
-            def result_callback(t: bool, i: Any, s: str) -> None:
-                frame_result = server_t.get_result_queue().get_nowait()
-                expecter.check_result(frame_result)
-                try:
-                    # callback to check for exceptions in server loop
-                    exc = server_t.get_exc_queue().get_nowait()
-                    raise exc
-                except queue.Empty:
-                    pass
+                # should be able to join the server thread here, as the client socket
+                # closing should have triggered the server loop to end gracefully
+                server_t.join(timeout=0.1)
+                ssock.close()
 
-            emulation.emulate(csock, emit_cb=emit_callback, resp_cb=result_callback)
-
-            # close client first, to make sure no exceptions occur in server
-            csock.close()
-            try:
-                # callback to check for exceptions in server loop
-                exc = server_t.get_exc_queue().get_nowait()
-                raise exc
-            except queue.Empty:
-                pass
-
-            # should be able to join the server thread here, as the client socket
-            # closing should have triggered the server loop to end gracefully
-            server_t.join(timeout=0.1)
-            ssock.close()
-
-            # finally, output the timing metrics dataframe for manual debugging
-            logger.info(f"Step metrics:\n{emulation.get_step_metrics()}")
-            logger.success("Finished")
+                # finally, output the timing metrics dataframe for manual debugging
+                logger.info(f"Step metrics:\n{emulation.get_step_metrics()}")
+                logger.success("Finished")

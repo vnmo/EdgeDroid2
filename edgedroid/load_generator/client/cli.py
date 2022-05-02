@@ -53,12 +53,17 @@ from ..common_cli import enable_logging
 @click.option(
     "-m",
     "--model",
-    type=click.Choice(["empirical", "theoretical"], case_sensitive=False),
+    type=click.Choice(["empirical", "theoretical", "naive"], case_sensitive=False),
     default="theoretical",
     show_default=True,
-    help="Execution time model to use. "
-    "'empirical' samples directly from the underlying data, "
-    "'theoretical' first fits distributions to the data and then samples.",
+    help="Execution time model to use:\n"
+    "\n"
+    "\b\n"
+    "\t- 'empirical' samples directly from the underlying data.\n"
+    "\t- 'theoretical' first fits distributions to the data and then samples.\n"
+    "\t- 'naive' uses a constant execution time equal to the mean execution time of "
+    "the underlying data.\n"
+    "\t\n",
 )
 @click.option(
     "-o",
@@ -89,7 +94,7 @@ def edgedroid_client(
     neuroticism: float,
     task: str,
     fade_distance: int,
-    model: Literal["empirical", "theoretical"],
+    model: Literal["empirical", "theoretical", "naive"],
     verbose: bool,
     output: pathlib.Path,
 ):

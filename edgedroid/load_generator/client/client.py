@@ -33,6 +33,8 @@ from ...models import (
 
 import numpy.typing as npt
 
+from ...models.timings import NaiveExecutionTimeModel
+
 
 class StreamSocketEmulation:
     def __init__(
@@ -40,7 +42,7 @@ class StreamSocketEmulation:
         neuroticism: float,
         trace: str,
         fade_distance: int,
-        model: Literal["theoretical", "empirical"] = "theoretical",
+        model: Literal["theoretical", "empirical", "naive"] = "theoretical",
     ):
         logger.info(
             f"Initializing EdgeDroid model with neuroticism {neuroticism:0.2f} and "
@@ -54,21 +56,27 @@ class StreamSocketEmulation:
         # first thing first, prepare data
         frameset = e_data.load_default_trace(trace)
 
-        # prepare models
-        if model == "theoretical":
-            timing_model: ExecutionTimeModel = (
-                TheoreticalExecutionTimeModel.from_default_data(
-                    neuroticism=neuroticism,
-                    transition_fade_distance=fade_distance,
+        match model:
+            case "theoretical":
+                timing_model: ExecutionTimeModel = (
+                    TheoreticalExecutionTimeModel.from_default_data(
+                        neuroticism=neuroticism,
+                        transition_fade_distance=fade_distance,
+                    )
                 )
-            )
-        else:
-            timing_model: ExecutionTimeModel = (
-                EmpiricalExecutionTimeModel.from_default_data(
-                    neuroticism=neuroticism,
-                    transition_fade_distance=fade_distance,
+            case "empirical":
+                timing_model: ExecutionTimeModel = (
+                    EmpiricalExecutionTimeModel.from_default_data(
+                        neuroticism=neuroticism,
+                        transition_fade_distance=fade_distance,
+                    )
                 )
-            )
+            case "naive":
+                timing_model: ExecutionTimeModel = (
+                    NaiveExecutionTimeModel.from_default_data()
+                )
+            case _:
+                raise NotImplementedError(f"Unrecognized execution time model: {model}")
 
         frame_model = FrameModel(e_data.load_default_frame_probabilities())
 
