@@ -11,5 +11,6 @@ RUN pip install ".[load-client]"
 RUN mkdir -p /edgedroid
 
 WORKDIR /edgedroid
+RUN edgedroid-tools --verbose prefetch-all-traces --yes
 ENTRYPOINT ["edgedroid-client"]
 
