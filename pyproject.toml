@@ -3,6 +3,7 @@ requires = [
   "pip >= 22.0.0",
   "setuptools >= 40.9.0",
   "wheel >= 0.37.1",
-  "loguru >= 0.6.0"
+  "loguru >= 0.6.0",
+  "cmake >= 3.22"
 ]
 build-backend = "setuptools.build_meta"
