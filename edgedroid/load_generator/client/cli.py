@@ -22,9 +22,20 @@ from .client import StreamSocketEmulation
 from ..common_cli import enable_logging
 
 
-@click.command("edgedroid-client")
-@click.argument("host", type=str)
-@click.argument("port", type=click.IntRange(0, 65535))
+@click.command(
+    "edgedroid-client",
+    context_settings={"auto_envvar_prefix": "EDGEDROID_CLIENT"},
+)
+@click.argument(
+    "host",
+    type=str,
+    envvar="EDGEDROID_CLIENT_HOST",
+)
+@click.argument(
+    "port",
+    type=click.IntRange(0, 65535),
+    envvar="EDGEDROID_CLIENT_PORT",
+)
 @click.option(
     "-n",
     "--neuroticism",

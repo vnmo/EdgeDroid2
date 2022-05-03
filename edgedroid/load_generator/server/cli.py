@@ -19,13 +19,25 @@ from .server import serve_LEGO_task
 from ..common_cli import enable_logging
 
 
-@click.command("edgedroid-server")
-@click.argument("bind-address", type=str)
+@click.command(
+    "edgedroid-server",
+    context_settings={"auto_envvar_prefix": "EDGEDROID_SERVER"},
+)
+@click.argument(
+    "bind-address",
+    type=str,
+    envvar="EDGEDROID_SERVER_BIND_ADDR",
+)
 @click.argument(
     "bind-port",
     type=click.IntRange(0, 65535),
+    envvar="EDGEDROID_SERVER_BIND_PORT",
 )
-@click.argument("task-name", type=str)
+@click.argument(
+    "task-name",
+    type=str,
+    envvar="EDGEDROID_SERVER_TASK_NAME",
+)
 @click.option(
     "--one-shot/--multi-run",
     is_flag=True,
