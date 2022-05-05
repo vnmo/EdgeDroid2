@@ -164,6 +164,22 @@ def preprocess_data(
     return data
 
 
+def winsorize_series(e: pd.Series) -> npt.NDArray:
+    # clean up execution times by setting
+    # x = 5th percentile, for all values < 5th percentile
+    # x = 95th percentile, for all values > 95th percentile
+
+    e = e.dropna().to_numpy(dtype=np.float64)
+
+    percs = np.percentile(e, [5, 95])
+    mask5 = e < percs[0]
+    mask95 = e > percs[1]
+
+    e[mask5] = percs[0]
+    e[mask95] = percs[1]
+    return e
+
+
 class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
     """
     Defines the general interface for execution time models.
@@ -229,7 +245,7 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
     def from_default_data(cls) -> ExecutionTimeModel:
         """
         Builds a naive model from the default data, using the average execution time
-        as the execution time for the model.
+        of the best-case (unimpaired) steps as the execution time for the model.
 
         Returns
         -------
@@ -243,11 +259,20 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
 
         data = preprocess_data(
             *e_data.load_default_exec_time_data(),
-            transition_fade_distance=None,
+            transition_fade_distance=4,
         )
 
-        exec_time = data.next_exec_time.mean()
-        return cls(exec_time)
+        # only grab execution times for steps that
+        # 1. correspond to an "unimpaired" state
+        # 2. are not marked as being close to a transition.
+        data = data[
+            (data["impairment"] == data["impairment"].min())
+            & (data["transition"] == Transition.NONE.value)
+        ]
+
+        # clean outliers
+        exec_times = winsorize_series(data["next_exec_time"])
+        return cls(exec_times.mean())
 
     def __init__(self, execution_time_seconds: float):
         super(NaiveExecutionTimeModel, self).__init__()
@@ -315,27 +340,12 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._neuroticism = neuroticism
         self._neuro_binned = data["neuroticism"].unique()[0]
 
-        def winsorize_execution_times(e: pd.Series) -> npt.NDArray:
-            # clean up execution times by setting
-            # x = 5th percentile, for all values < 5th percentile
-            # x = 95th percentile, for all values > 95th percentile
-
-            e = e.dropna().to_numpy(dtype=np.float64)
-
-            percs = np.percentile(e, [5, 95])
-            mask5 = e < percs[0]
-            mask95 = e > percs[1]
-
-            e[mask5] = percs[0]
-            e[mask95] = percs[1]
-            return e
-
         # next, prepare views
         self._data_views = (
             data.groupby(
                 ["impairment", "duration", "transition"], observed=True, dropna=True
             )["next_exec_time"]
-            .apply(winsorize_execution_times)
+            .apply(winsorize_series)
             .to_dict()
             # .apply(lambda x: x.dropna().to_numpy()).to_dict()
         )
