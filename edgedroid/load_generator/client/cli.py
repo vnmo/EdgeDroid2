@@ -99,6 +99,22 @@ from ..common_cli import enable_logging
     help="Enable verbose logging.",
     show_default=True,
 )
+@click.option(
+    "--connect-timeout-seconds",
+    "conn_tout",
+    type=float,
+    default=5.0,
+    show_default=True,
+    help="Time in seconds before the initial connection establishment times out.",
+)
+@click.option(
+    "--max-connection-retries",
+    "max_retries",
+    type=int,
+    default=5,
+    show_default=True,
+    help="Maximum connection retries.",
+)
 def edgedroid_client(
     host: str,
     port: int,
@@ -108,6 +124,8 @@ def edgedroid_client(
     model: Literal["empirical", "theoretical", "naive"],
     verbose: bool,
     output: pathlib.Path,
+    conn_tout: float,
+    max_retries: int,
 ):
     """
     Run an EdgeDroid2 client.
@@ -117,36 +135,44 @@ def edgedroid_client(
 
     enable_logging(verbose)
     emulation = StreamSocketEmulation(
-        neuroticism=neuroticism, trace=task, fade_distance=fade_distance, model=model
+        neuroticism=neuroticism,
+        trace=task,
+        fade_distance=fade_distance,
+        model=model,
     )
 
-    # "connect" to remote
-    # this is of course just for convenience, to skip adding an address to every
-    # send() call, as there are no "connections" in udp.
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.settimeout(30.0)  # TODO: magic number, maybe add as an option. This is
-        # just the timeout for the initial connection.
+
+    for try_i in range(1, max_retries + 1):  # connection retry loop
+        logger.debug(f"Connection attempt {try_i:d}/{max_retries:d}")
+
         try:
-            sock.connect((host, port))
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(conn_tout)
+                sock.connect((host, port))
+                logger.success(f"Connected to {host}:{port}/tcp!")
+                sock.settimeout(None)  # no timeouts are needed
+                emulation.emulate(sock)
+                logger.success("Emulation finished")
+
+            step_metrics = emulation.get_step_metrics()
+            logger.info(f"Writing step metrics to {output}")
+            step_metrics.to_csv(output)
+            return  # success
         except socket.timeout:
-            logger.error(f"Timed out connecting to backend at {host}:{port}")
-            raise click.Abort()
+            logger.warning("Connection timed out, retrying")
+            continue
         except ConnectionRefusedError:
-            logger.error(f"{host}:{port} refused connection.")
+            logger.critical(f"{host}:{port} refused connection")
             raise click.Abort()
         except socket.error as e:
-            logger.error(
+            logger.critical(
                 f"Encountered unspecified socket error when connecting to {host}:{port}"
             )
             logger.exception(e)
             raise click.Abort()
 
-        sock.settimeout(None)  # blocking mode
-        # these are tcp sockets, so no timeouts are needed
-
-        emulation.emulate(sock)
-
-    step_metrics = emulation.get_step_metrics()
-    logger.info(f"Writing step metrics to {output}")
-    step_metrics.to_csv(output)
+    # we only reach here if the code times out too many times!
+    logger.critical("Reached maximum number of connection retries")
+    logger.critical(f"Timed out connecting to backend at {host}:{port}")
+    raise click.Abort()
