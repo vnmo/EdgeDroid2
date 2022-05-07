@@ -108,12 +108,25 @@ from ..common_cli import enable_logging
     help="Time in seconds before the initial connection establishment times out.",
 )
 @click.option(
-    "--max-connection-retries",
-    "max_retries",
+    "--max-connection-attempts",
+    "max_attempts",
     type=int,
     default=5,
     show_default=True,
     help="Maximum connection retries.",
+)
+@click.option(
+    "--log-file",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        writable=True,
+        resolve_path=True,
+        path_type=pathlib.Path,
+    ),
+    default=None,
+    show_default=True,
+    help="Save a copy of the logs to a file.",
 )
 def edgedroid_client(
     host: str,
@@ -125,7 +138,8 @@ def edgedroid_client(
     verbose: bool,
     output: pathlib.Path,
     conn_tout: float,
-    max_retries: int,
+    max_attempts: int,
+    log_file: Optional[pathlib.Path],
 ):
     """
     Run an EdgeDroid2 client.
@@ -133,7 +147,7 @@ def edgedroid_client(
     Connects to HOST:PORT and runs an emulation.
     """
 
-    enable_logging(verbose)
+    enable_logging(verbose, log_file=log_file)
     emulation = StreamSocketEmulation(
         neuroticism=neuroticism,
         trace=task,
@@ -143,8 +157,8 @@ def edgedroid_client(
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")
 
-    for try_i in range(1, max_retries + 1):  # connection retry loop
-        logger.debug(f"Connection attempt {try_i:d}/{max_retries:d}")
+    for attempt in range(1, max_attempts + 1):  # connection retry loop
+        logger.debug(f"Connection attempt {attempt:d}/{max_attempts:d}")
 
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:

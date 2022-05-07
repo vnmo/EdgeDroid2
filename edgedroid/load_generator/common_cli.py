@@ -11,20 +11,33 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import pathlib
 import sys
+from typing import Optional
 
 from loguru import logger
 
 
-def enable_logging(verbose: bool) -> None:
+def enable_logging(verbose: bool, log_file: Optional[pathlib.Path] = None) -> None:
     logger.enable("edgedroid")
     logger.remove()
 
     level = "DEBUG" if verbose else "INFO"
     logger.add(sys.stderr, level=level)
+    if log_file is not None:
+        logger.debug(f"Saving logs to {log_file}")
+        logger.add(
+            log_file,
+            level=level,
+            colorize=False,
+            backtrace=True,
+            diagnose=True,
+            catch=True,
+        )
 
-    if verbose:
-        logger.warning("Setting verbose logging may affect application performance")
+    if verbose or log_file is not None:
+        logger.warning(
+            "Enabling verbose or file logging may affect application performance"
+        )
 
     logger.info(f"Setting logging level to {level}")

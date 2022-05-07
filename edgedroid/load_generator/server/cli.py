@@ -12,6 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import pathlib
+from typing import Optional
 
 import click
 
@@ -68,6 +69,19 @@ from ..common_cli import enable_logging
     help="Enable verbose logging.",
     show_default=True,
 )
+@click.option(
+    "--log-file",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        writable=True,
+        resolve_path=True,
+        path_type=pathlib.Path,
+    ),
+    default=None,
+    show_default=True,
+    help="Save a copy of the logs to a file.",
+)
 def edgedroid_server(
     bind_address: str,
     bind_port: int,
@@ -75,6 +89,7 @@ def edgedroid_server(
     one_shot: bool,
     verbose: bool,
     output: pathlib.Path,
+    log_file: Optional[pathlib.Path],
 ):
     """
     Run an EdgeDroid2 server based on Gabriel-LEGO.
@@ -82,7 +97,7 @@ def edgedroid_server(
     Binds to BIND-ADDRESS:BIND-PORT and listens for connections from EdgeDroid
     clients. TASK_NAME identifies the task to run.
     """
-    enable_logging(verbose)
+    enable_logging(verbose, log_file=log_file)
     serve_LEGO_task(
         task=task_name,
         port=bind_port,
