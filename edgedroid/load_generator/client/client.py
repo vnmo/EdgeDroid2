@@ -14,6 +14,8 @@
 
 import contextlib
 import socket
+import time
+from collections import deque
 from typing import Callable, Literal
 
 import click
@@ -84,8 +86,13 @@ class StreamSocketEmulation:
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
         )
 
+        self._frame_records = deque()
+
     def get_step_metrics(self) -> pd.DataFrame:
         return self._model.model_step_metrics()
+
+    def get_frame_metrics(self) -> pd.DataFrame:
+        return pd.DataFrame(self._frame_records).set_index("seq")
 
     def emulate(
         self,
@@ -108,6 +115,8 @@ class StreamSocketEmulation:
         """
 
         logger.warning("Starting emulation")
+        start_time = time.time()
+        start_time_mono = time.monotonic()
         with contextlib.closing(response_stream_unpack(sock)) as resp_stream:
             for step_num, model_step in enumerate(self._model.play_steps()):
                 logger.info(f"Current step: {step_num}")
@@ -121,15 +130,32 @@ class StreamSocketEmulation:
                         f"\tFrame step seq: {model_frame.step_seq}"
                     )
                     payload = pack_frame(model_frame.seq, model_frame.frame_data)
+                    send_time = time.monotonic()
                     sock.sendall(payload)
                     emit_cb(model_frame)
 
                     # wait for response
                     logger.debug("Waiting for response from server")
                     transition, guidance_img, guidance_text = next(resp_stream)
+                    recv_time = time.monotonic()
+                    rtt = recv_time - send_time
                     logger.debug("Received response from server")
+                    logger.debug(f"Frame round-trip-time: {rtt:0.3f} seconds")
                     logger.info(f"Guidance: {guidance_text}")
                     resp_cb(transition, guidance_img, guidance_text)
+
+                    # log the frame
+                    self._frame_records.append(
+                        {
+                            "seq": model_frame.seq,
+                            "step_index": model_frame.step_index,
+                            "step_seq": model_frame.step_seq,
+                            "expected_tag": model_frame.frame_tag,
+                            "transition": transition,
+                            "send_time": start_time + (send_time - start_time_mono),
+                            "rtt": rtt,
+                        }
+                    )
 
                     if model_frame.frame_tag in ("success", "initial"):
                         if transition:

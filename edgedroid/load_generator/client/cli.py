@@ -77,8 +77,7 @@ from ..common_cli import enable_logging
     "\t\n",
 )
 @click.option(
-    "-o",
-    "--output",
+    "--step-records-output",
     type=click.Path(
         file_okay=True,
         dir_okay=False,
@@ -86,9 +85,22 @@ from ..common_cli import enable_logging
         resolve_path=True,
         path_type=pathlib.Path,
     ),
-    default="./client_records.csv",
+    default=None,
     show_default=True,
     help="Specifies a path on which to output step metrics in CSV format.",
+)
+@click.option(
+    "--frame-records-output",
+    type=click.Path(
+        file_okay=True,
+        dir_okay=False,
+        writable=True,
+        resolve_path=True,
+        path_type=pathlib.Path,
+    ),
+    default=None,
+    show_default=True,
+    help="Specifies a path on which to output frame metrics in CSV format.",
 )
 @click.option(
     "-v",
@@ -136,7 +148,8 @@ def edgedroid_client(
     fade_distance: int,
     model: Literal["empirical", "theoretical", "naive"],
     verbose: bool,
-    output: pathlib.Path,
+    step_records_output: Optional[pathlib.Path],
+    frame_records_output: Optional[pathlib.Path],
     conn_tout: float,
     max_attempts: int,
     log_file: Optional[pathlib.Path],
@@ -156,37 +169,46 @@ def edgedroid_client(
     )
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")
+    try:
+        for attempt in range(1, max_attempts + 1):  # connection retry loop
+            logger.debug(f"Connection attempt {attempt:d}/{max_attempts:d}")
 
-    for attempt in range(1, max_attempts + 1):  # connection retry loop
-        logger.debug(f"Connection attempt {attempt:d}/{max_attempts:d}")
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(conn_tout)
+                    sock.connect((host, port))
+                    logger.success(f"Connected to {host}:{port}/tcp!")
+                    sock.settimeout(None)  # no timeouts are needed
+                    emulation.emulate(sock)
+                    logger.success("Emulation finished")
+                break  # success
+            except socket.timeout:
+                logger.warning("Connection timed out, retrying")
+                continue
+            except ConnectionRefusedError:
+                logger.critical(f"{host}:{port} refused connection")
+                raise click.Abort()
+            except socket.error as e:
+                logger.critical(
+                    f"Encountered unspecified socket error when connecting to {host}:{port}"
+                )
+                logger.exception(e)
+                raise click.Abort()
+        else:
+            # we only reach here if the code times out too many times!
+            logger.critical("Reached maximum number of connection retries")
+            logger.critical(f"Timed out connecting to backend at {host}:{port}")
+            raise click.Abort()
 
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(conn_tout)
-                sock.connect((host, port))
-                logger.success(f"Connected to {host}:{port}/tcp!")
-                sock.settimeout(None)  # no timeouts are needed
-                emulation.emulate(sock)
-                logger.success("Emulation finished")
+    finally:
+        # write outputs even if we abort above
 
+        if step_records_output is not None:
             step_metrics = emulation.get_step_metrics()
-            logger.info(f"Writing step metrics to {output}")
-            step_metrics.to_csv(output)
-            return  # success
-        except socket.timeout:
-            logger.warning("Connection timed out, retrying")
-            continue
-        except ConnectionRefusedError:
-            logger.critical(f"{host}:{port} refused connection")
-            raise click.Abort()
-        except socket.error as e:
-            logger.critical(
-                f"Encountered unspecified socket error when connecting to {host}:{port}"
-            )
-            logger.exception(e)
-            raise click.Abort()
+            logger.info(f"Writing step metrics to {step_records_output}")
+            step_metrics.to_csv(step_records_output)
 
-    # we only reach here if the code times out too many times!
-    logger.critical("Reached maximum number of connection retries")
-    logger.critical(f"Timed out connecting to backend at {host}:{port}")
-    raise click.Abort()
+        if frame_records_output is not None:
+            frame_metrics = emulation.get_frame_metrics()
+            logger.info(f"Writing frame metrics to {frame_records_output}")
+            frame_metrics.to_csv(frame_records_output)
