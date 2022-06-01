@@ -14,132 +14,96 @@
 
 from __future__ import annotations
 
-import threading
-from collections import deque
-from typing import Deque
+import socket
+import sys
+import uuid
+from multiprocessing import Condition, Event, Process
 
-import cv2
-import numpy as np
-import numpy.typing as npt
-import pandas as pd
-from gabriel_lego import FrameResult, LEGOTask
+from loguru import logger
 
-import edgedroid.data as e_data
-from edgedroid.data.load import load_default_frame_probabilities, load_default_trace
-from edgedroid.models.timings import TheoreticalExecutionTimeModel, preprocess_data
-from edgedroid.models.frames import FrameModel
-from edgedroid.models.model import EdgeDroidModel
+from edgedroid.load_generator.client.client import StreamSocketEmulation
+from edgedroid.load_generator.server.server import server
 
 
-def processing_thread_loop(
-    ui_input_q: Deque, ui_guidance_q: Deque, done_flag: threading.Event
-):
-    task = pd.read_csv("./latin_sqr_0.csv")
-    states = [np.array(eval(s), dtype=int) for s in task["state"]]
-    # noinspection PyTypeChecker
-    lego_task = LEGOTask(states)
+class ServerProcess(Process):
+    def __init__(self, unix_socket_addr: str, task_name: str = "square00"):
+        super(ServerProcess, self).__init__()
+        self._sock_addr = unix_socket_addr
+        self._task = task_name
+        self._ready_cond = Condition()
+        self._is_ready = Event()
 
-    # load data and build model
-    data = preprocess_data(*e_data.load_default_exec_time_data())
-    timing_model = TheoreticalExecutionTimeModel(data=data, neuroticism=0.5)
+    def wait_until_ready(self) -> None:
+        with self._ready_cond:
+            while not self._is_ready.is_set():
+                self._ready_cond.wait()
 
-    frameset = load_default_trace("square00")
-    frame_model = FrameModel(load_default_frame_probabilities())
+    def run(self) -> None:
+        # create a unix socket to listen on
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            sock.bind(self._sock_addr)
+            sock.listen(1)
+            logger.info(f"Server listening on {self._sock_addr}")
 
-    edgedroid_model = EdgeDroidModel(
-        frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
+            with self._ready_cond:
+                self._is_ready.set()
+                self._ready_cond.notify_all()
+
+            conn, peer_addr = sock.accept()
+            logger.info("Server accepts connection")
+            try:
+                results = server(self._task, conn)
+            finally:
+                logger.warning("Server closing connection")
+                conn.close()
+        finally:
+            sock.close()
+
+
+def demo_loop(trace="test"):
+    # enable logging
+    logger.enable("edgedroid")
+    logger.remove()
+
+    logger.add(
+        sys.stderr,
+        enqueue=True,
+        colorize=True,
+        backtrace=True,
+        diagnose=True,
+        catch=True,
     )
 
-    try:
-        for model_frame in edgedroid_model.play():
-            guidance = lego_task.get_current_guide_illustration()
-            msg = lego_task.get_current_instruction()
-            ui_guidance_q.append((guidance, msg))
-            ui_input_q.append(
-                (
-                    model_frame.frame_data,
-                    f"Tag: {model_frame.frame_tag} | "
-                    f"Time: {model_frame.step_frame_time:0.03f} s /"
-                    f" {model_frame.step_target_time:0.03f} s",
-                )
-            )
-            ui_guidance_q.append((guidance, msg))
+    emulation = StreamSocketEmulation(
+        neuroticism=0.5,
+        trace=trace,
+        fade_distance=8,
+    )
 
-            result = lego_task.submit_frame(model_frame.frame_data)
-            match model_frame.frame_tag:
-                case "repeat":
-                    assert result == FrameResult.NO_CHANGE
-                case "low_confidence":
-                    assert result == FrameResult.LOW_CONFIDENCE
-                case "blank":
-                    assert result in (FrameResult.JUNK_FRAME, FrameResult.CV_ERROR)
-                case "success" | "initial":
-                    assert result == FrameResult.SUCCESS
-                case _:
-                    raise RuntimeError()
-    except AssertionError:
-        print(result)
-        raise
+    socket_addr = f"/tmp/{uuid.uuid4()}.sock"
+
+    logger.info("Starting server process")
+
+    server_proc = ServerProcess(socket_addr, task_name=trace)
+
+    try:
+        server_proc.start()
+        server_proc.wait_until_ready()
+
+        # connect the client socket
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            logger.info(f"Connecting to server socket on {socket_addr}")
+            sock.connect(socket_addr)
+            logger.success("Connection success, starting emulation")
+            emulation.emulate(sock)
+            logger.success("Emulation done!")
+        finally:
+            sock.close()
     finally:
-        done_flag.set()
+        server_proc.join(timeout=1.0)
 
 
 if __name__ == "__main__":
-    view_width = 1200
-    view_height = 300
-
-    ui_input_q = deque(maxlen=1)
-    ui_guidance_q = deque(maxlen=1)
-
-    # initial black images
-    current_guidance = np.zeros((view_height, view_width // 2, 3), dtype=np.uint8)
-    current_input = np.zeros((view_height, view_width // 2, 3), dtype=np.uint8)
-
-    # process loop check
-    proc_done = threading.Event()
-
-    def resize_add_text(img: npt.NDArray, text: str) -> npt.NDArray:
-        w = view_width // 2
-
-        img = cv2.resize(img, (w, view_height), cv2.INTER_AREA)
-        cv2.putText(
-            img=img,
-            text=f"{text[:50]}",
-            color=(0, 0, 255),
-            org=(view_height // 10, w // 10),
-            fontFace=cv2.FONT_HERSHEY_PLAIN,
-            fontScale=1,
-            thickness=1,
-        )
-        return img
-
-    # start process thread
-    pt = threading.Thread(
-        target=processing_thread_loop,
-        kwargs=dict(
-            ui_input_q=ui_input_q, ui_guidance_q=ui_guidance_q, done_flag=proc_done
-        ),
-    )
-    pt.start()
-
-    # ui loop
-    _ = cv2.namedWindow("DEMO")
-    while not proc_done.is_set():
-        try:
-            guidance, msg = ui_guidance_q.popleft()
-            current_guidance = resize_add_text(guidance, msg)
-        except IndexError:
-            pass
-
-        try:
-            frame, tag = ui_input_q.popleft()
-            current_input = resize_add_text(frame, tag)
-        except IndexError:
-            pass
-
-        output_img = np.concatenate((current_guidance, current_input), axis=1)
-        cv2.imshow("DEMO", output_img)
-        cv2.waitKey(25)
-
-    cv2.destroyAllWindows()
-    pt.join()
+    demo_loop()
