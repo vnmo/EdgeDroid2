@@ -7,7 +7,7 @@ Human behavior modeling for step-based Wearable Cognitive Assistance.
 
 ## Documentation
 
-See [the documentation website.](https://manuel.olguinmunoz.xyz/EdgeDroid2).
+See [the documentation website.](https://manuel.olguinmunoz.xyz/EdgeDroid2)
 
 # License
 
