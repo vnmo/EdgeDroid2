@@ -11,6 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+import itertools
 import pathlib
 import socket
 from typing import Literal, Optional
@@ -125,7 +126,8 @@ from ..common_cli import enable_logging
     type=int,
     default=5,
     show_default=True,
-    help="Maximum connection retries.",
+    help="Maximum connection retries, set to a 0 or a "
+    "negative value for infinite retries.",
 )
 @click.option(
     "--log-file",
@@ -170,8 +172,15 @@ def edgedroid_client(
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")
     try:
-        for attempt in range(1, max_attempts + 1):  # connection retry loop
-            logger.debug(f"Connection attempt {attempt:d}/{max_attempts:d}")
+        if max_attempts <= 0:
+            attempts = itertools.count(1)
+            max_attpts_label = "inf"
+        else:
+            attempts = range(1, max_attempts + 1)
+            max_attpts_label = f"{max_attempts:d}"
+
+        for attempt in attempts:  # connection retry loop
+            logger.debug(f"Connection attempt {attempt:d}/{max_attpts_label}")
 
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -186,11 +195,15 @@ def edgedroid_client(
                 logger.warning("Connection timed out, retrying")
                 continue
             except ConnectionRefusedError:
-                logger.critical(f"{host}:{port} refused connection")
-                raise click.Abort()
+                logger.warning(f"{host}:{port} refused connection, retrying")
+                continue
+            except (socket.gaierror, socket.herror):
+                logger.warning(f"Name lookup for target {host} failed, retrying")
+                continue
             except socket.error as e:
                 logger.critical(
-                    f"Encountered unspecified socket error when connecting to {host}:{port}"
+                    f"Encountered unspecified socket error "
+                    f"when connecting to {host}:{port}"
                 )
                 logger.exception(e)
                 raise click.Abort()
