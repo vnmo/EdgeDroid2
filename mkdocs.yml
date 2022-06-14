@@ -1,0 +1,53 @@
+---
+site_name: "The EdgeDroid 2 Model for Wearable Cognitive Assistance"
+# extra_css:
+#   - stylesheets/extra.css
+theme:
+  palette:
+    scheme: slate
+    primary: grey
+    accent: indigo
+  logo: assets/kth_logo.png
+  name: material
+  font:
+    text: Ubuntu
+    code: JetBrains Mono
+  icon:
+    # logo: fontawesome/solid/server
+    repo: fontawesome/brands/github
+    admonition: {}
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - toc.integrate
+repo_url: https://github.com/molguin92/EdgeDroid2
+repo_name: molguin92/EdgeDroid2
+copyright: Copyright &copy; 2021 - Manuel Olguín Muñoz, KTH Royal Institute of Technology
+markdown_extensions:
+  - def_list
+  - attr_list
+  - admonition
+  - pymdownx.details
+  - footnotes
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
+  - pymdownx.highlight:
+      linenums: yes
+      linenums_style: pymdownx-inline
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - toc:
+      permalink: 🔗
+plugins:
+  - awesome-pages
+  - git-revision-date-localized:
+      type: timeago
+      enable_creation_date: true
+      fallback_to_build_date: true
+...

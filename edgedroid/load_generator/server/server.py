@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import pathlib
-import queue
 import socket
-import threading
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
@@ -116,69 +114,11 @@ def accept_context(
         conn.close()
 
 
-class WritingThread(threading.Thread, contextlib.AbstractContextManager):
-    def __init__(self, output_path: pathlib.Path):
-        super().__init__()
-        self._output = output_path.resolve()
-        self._in_q = queue.Queue()
-        self._running = threading.Event()
-
-    def push_records(self, records: pd.DataFrame) -> None:
-        self._in_q.put_nowait(records)
-
-    def stop(self) -> None:
-        logger.debug("Stopping file writing thread")
-        self._in_q.join()
-        self._running.clear()
-        self.join()
-        logger.debug("File writing thread stopped")
-
-    def __enter__(self) -> WritingThread:
-        self.start()
-        super(WritingThread, self).__enter__()
-        return self
-
-    def start(self) -> None:
-        logger.debug("Starting file writing thread")
-        self._running.set()
-        super(WritingThread, self).start()
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.stop()
-        return super(WritingThread, self).__exit__(exc_type, exc_val, exc_tb)
-
-    def run(self) -> None:
-        self._running.set()
-        with self._output.open("w+") as fp:
-            while self._running.is_set():
-                try:
-                    records = self._in_q.get(timeout=0.1)
-
-                    # got records
-                    fp.seek(0)
-
-                    try:
-                        data = pd.concat((pd.read_csv(fp), records), ignore_index=False)
-                    except pd.errors.EmptyDataError:
-                        # empty file, guess we have just begun writing
-                        data = records
-
-                    fp.seek(0)
-                    data.to_csv(fp, index=True, header=True)
-                    fp.flush()
-                    del data
-
-                    self._in_q.task_done()
-                except queue.Empty:
-                    continue
-
-
 def serve_LEGO_task(
     task: str,
     port: int,
     output_path: pathlib.Path,
     bind_address: str = "0.0.0.0",
-    one_shot: bool = True,
 ) -> None:
     with contextlib.ExitStack() as stack:
         # enter context
@@ -187,24 +127,12 @@ def serve_LEGO_task(
                 (bind_address, port), family=socket.AF_INET, backlog=1, reuse_port=True
             )
         )
-        wt: WritingThread = stack.enter_context(WritingThread(output_path=output_path))
 
         logger.info(f"Serving LEGO task {task} on {bind_address}:{port}/tcp")
-        logger.debug(f"One-shot mode: {'on' if one_shot else 'off'}")
+        # logger.debug(f"One-shot mode: {'on' if one_shot else 'off'}")
         try:
-            clients_served = 0
-            while True:
-                with accept_context(server_sock) as (conn, _):
-                    clients_served += 1
-                    results = server(task, conn)
-                    results["client"] = clients_served
-                    results = results.reset_index().set_index(
-                        ["client", "seq"], verify_integrity=True
-                    )
-                    wt.push_records(results)
-                if one_shot:
-                    logger.warning("One-shot server, shutting down")
-                    break
+            with accept_context(server_sock) as (conn, _):
+                server(task, conn).to_csv(output_path)
         except KeyboardInterrupt:
-            logger.warning("Got keyboard interrupt")
+            logger.warning("Got keyboard interrupt, aborting")
             logger.warning("Shutting down!")

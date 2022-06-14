@@ -39,13 +39,13 @@ from ..common_cli import enable_logging
     type=str,
     envvar="EDGEDROID_SERVER_TASK_NAME",
 )
-@click.option(
-    "--one-shot/--multi-run",
-    is_flag=True,
-    default=True,
-    show_default=True,
-    help="Serve a single client and then exit, or stay listening for multiple runs.",
-)
+# @click.option(
+#     "--one-shot/--multi-run",
+#     is_flag=True,
+#     default=True,
+#     show_default=True,
+#     help="Serve a single client and then exit, or stay listening for multiple runs.",
+# )
 @click.option(
     "-o",
     "--output",
@@ -86,7 +86,7 @@ def edgedroid_server(
     bind_address: str,
     bind_port: int,
     task_name: str,
-    one_shot: bool,
+    # one_shot: bool,
     verbose: bool,
     output: pathlib.Path,
     log_file: Optional[pathlib.Path],
@@ -102,6 +102,5 @@ def edgedroid_server(
         task=task_name,
         port=bind_port,
         bind_address=bind_address,
-        one_shot=one_shot,
         output_path=output,
     )

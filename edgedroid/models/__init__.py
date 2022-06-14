@@ -58,8 +58,11 @@ class StepRecord:
     step_start_monotonic: float
     step_end: float
     step_end_monotonic: float
-    target_duration: float
-    actual_duration: float
+    first_frame_monotonic: float
+    last_frame_monotonic: float
+    execution_time: float
+    step_duration: float
+    wait_time: float
     frame_count: int
 
     def to_dict(self) -> Dict[str, int | float]:
@@ -122,33 +125,8 @@ class EdgeDroidModel:
     def play_steps(self) -> Iterator[Iterator[ModelFrame]]:
         """
         TODO: document
-
-        An iterator for iterators
-        Returns
-        -------
-
         """
-
-        # """
-        #         Run this model.
-        #
-        #         This function returns an iterator yielding video frames for each
-        #         instant in the emulation. Example usage::
-        #
-        #             model = EdgeDroidModel(...)
-        #             for frame in model.play():
-        #                 result = send_frame_to_backend(frame)
-        #                 ...
-        #
-        #
-        #         This iterator maintains an internal state of the task and
-        #         automatically produces realistic frames and timings.
-        #
-        #         Returns
-        #         -------
-        #         Iterator
-        #             An Iterator that yields appropriate video frames as numpy arrays.
-        #         """
+        task_start, task_start_mono = time.time(), time.monotonic()
 
         self.reset()
         step_frame_timestamps = deque()
@@ -156,7 +134,7 @@ class EdgeDroidModel:
         def _init_iter() -> Iterator[ModelFrame]:
             while True:
                 self._frame_count += 1
-                step_frame_timestamps.append((time.time(), time.monotonic()))
+                step_frame_timestamps.append(time.monotonic())
                 yield ModelFrame(
                     seq=self._frame_count,
                     step_seq=1,
@@ -168,30 +146,31 @@ class EdgeDroidModel:
                 )
 
         yield _init_iter()
-
-        # TODO: check if any frames were actually emitted?
-
-        step_start, step_start_mono = step_frame_timestamps[0]
-        step_end, step_end_mono = step_frame_timestamps[-1]
+        prev_step_end = time.monotonic()
+        dt = prev_step_end - task_start_mono  # duration of first step
 
         self._step_records.append(
             StepRecord(
                 step_number=0,
-                target_duration=0.0,
-                step_start=step_start,
-                step_start_monotonic=step_start_mono,
-                step_end=step_end,
-                step_end_monotonic=step_end_mono,
-                actual_duration=step_end_mono - step_start_mono,
+                step_start=task_start,
+                step_start_monotonic=task_start_mono,
+                step_end=task_start + dt,
+                step_end_monotonic=prev_step_end,
+                first_frame_monotonic=step_frame_timestamps[0],
+                last_frame_monotonic=step_frame_timestamps[-1],
+                execution_time=0.0,
+                step_duration=dt,
+                wait_time=dt,
                 frame_count=len(step_frame_timestamps),
             )
         )
 
         for step_index in range(self.step_count):
             # get a step duration
-            # calculate delay between last submitted frame from previous step and now
-            delay = time.monotonic() - step_frame_timestamps[-1][-1]
-            step_duration = self._timings.set_delay(delay).get_execution_time()
+            # calculate delay between last submitted frame from previous step and
+            # ending of step (i.e. when feedback was received)
+            delay = prev_step_end - step_frame_timestamps[-1]
+            execution_time = self._timings.set_delay(delay).get_execution_time()
 
             # clear the frame timestamp buffer
             step_frame_timestamps.clear()
@@ -200,34 +179,39 @@ class EdgeDroidModel:
                 # replay frames for step
                 for seq, (frame_tag, instant) in enumerate(
                     self._frame_dists.step_iterator(
-                        target_time=step_duration, infinite=True
+                        target_time=execution_time, infinite=True
                     )
                 ):
                     self._frame_count += 1
                     # record frame emission timestamp
-                    step_frame_timestamps.append((time.time(), time.monotonic()))
+                    step_frame_timestamps.append(time.monotonic())
                     yield ModelFrame(
                         seq=self._frame_count,
                         step_seq=seq + 1,
                         step_index=step_index,
                         step_frame_time=instant,
-                        step_target_time=step_duration,
+                        step_target_time=execution_time,
                         frame_tag=frame_tag,
                         frame_data=self._frames.get_frame(step_index, frame_tag),
                     )
 
             yield _frame_iter_for_step()
-            step_start, step_start_mono = step_frame_timestamps[0]
-            step_end, step_end_mono = step_frame_timestamps[-1]
+            dt = time.monotonic() - prev_step_end  # duration of step
+
+            step_start = task_start + (prev_step_end - task_start_mono)
             self._step_records.append(
                 StepRecord(
                     step_number=step_index + 1,
-                    target_duration=step_duration,
                     step_start=step_start,
-                    step_start_monotonic=step_start_mono,
-                    step_end=step_end,
-                    step_end_monotonic=step_end_mono,
-                    actual_duration=step_end_mono - step_start_mono,
+                    step_start_monotonic=prev_step_end,
+                    step_end=step_start + dt,
+                    step_end_monotonic=prev_step_end + dt,
+                    first_frame_monotonic=step_frame_timestamps[0],
+                    last_frame_monotonic=step_frame_timestamps[-1],
+                    execution_time=execution_time,
+                    step_duration=dt,
+                    wait_time=dt - execution_time,
                     frame_count=len(step_frame_timestamps),
                 )
             )
+            prev_step_end += dt  # update checkpoint
