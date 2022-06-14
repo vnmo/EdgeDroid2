@@ -3,7 +3,7 @@ DOCKER_USER = molguin
 IMG_REPO = $(DOCKER_USER)/edgedroid2
 
 all: server client
-.PHONY: all clean
+.PHONY: all clean dlib
 
 #login:
 #	docker login -u $(DOCKER_USER)
@@ -13,6 +13,9 @@ server: Dockerfile
 
 client: Dockerfile
 	$(BUILD_CMD) --target client -t $(IMG_REPO):client -f $< .
+
+dlib: Dockerfile.dlib
+	$(BUILD_CMD) -t $(IMG_REPO):dlib-base -f $< .
 
 clean:
 	docker image rm $(IMG_REPO):client

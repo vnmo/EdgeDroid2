@@ -3,7 +3,8 @@
 #
 #RUN apt-get update -y #  && apt-get upgrade -y
 #RUN apt-get install python3 python3-pip git build-essential cmake ffmpeg libsm6 libxext6 -y
-FROM molguin/dlib-base:latest as base
+FROM molguin/edgedroid2:dlib-base as base
+ENV DEBIAN_FRONTEND=noninteractive
 
 COPY . /opt/edgedroid
 WORKDIR /opt/edgedroid
