@@ -64,6 +64,7 @@ class StepRecord:
     step_duration: float
     wait_time: float
     frame_count: int
+    delay: float
 
     def to_dict(self) -> Dict[str, int | float]:
         return asdict(self)
@@ -127,6 +128,7 @@ class EdgeDroidModel:
         TODO: document
         """
         task_start, task_start_mono = time.time(), time.monotonic()
+        prev_step_end = task_start_mono
 
         self.reset()
         step_frame_timestamps = deque()
@@ -146,24 +148,25 @@ class EdgeDroidModel:
                 )
 
         yield _init_iter()
-        prev_step_end = time.monotonic()
-        dt = prev_step_end - task_start_mono  # duration of first step
+        dt = time.monotonic() - prev_step_end
 
-        self._step_records.append(
-            StepRecord(
-                step_number=0,
-                step_start=task_start,
-                step_start_monotonic=task_start_mono,
-                step_end=task_start + dt,
-                step_end_monotonic=prev_step_end,
-                first_frame_monotonic=step_frame_timestamps[0],
-                last_frame_monotonic=step_frame_timestamps[-1],
-                execution_time=0.0,
-                step_duration=dt,
-                wait_time=dt,
-                frame_count=len(step_frame_timestamps),
-            )
+        step_record = StepRecord(
+            step_number=0,
+            step_start=task_start,
+            step_start_monotonic=prev_step_end,
+            step_end=task_start + dt,
+            step_end_monotonic=prev_step_end + dt,
+            first_frame_monotonic=step_frame_timestamps[0],
+            last_frame_monotonic=step_frame_timestamps[-1],
+            execution_time=0.0,
+            step_duration=dt,
+            wait_time=dt,
+            frame_count=len(step_frame_timestamps),
+            delay=0,
         )
+
+        self._step_records.append(step_record)
+        prev_step_end = step_record.step_end_monotonic
 
         for step_index in range(self.step_count):
             # get a step duration
@@ -199,19 +202,20 @@ class EdgeDroidModel:
             dt = time.monotonic() - prev_step_end  # duration of step
 
             step_start = task_start + (prev_step_end - task_start_mono)
-            self._step_records.append(
-                StepRecord(
-                    step_number=step_index + 1,
-                    step_start=step_start,
-                    step_start_monotonic=prev_step_end,
-                    step_end=step_start + dt,
-                    step_end_monotonic=prev_step_end + dt,
-                    first_frame_monotonic=step_frame_timestamps[0],
-                    last_frame_monotonic=step_frame_timestamps[-1],
-                    execution_time=execution_time,
-                    step_duration=dt,
-                    wait_time=dt - execution_time,
-                    frame_count=len(step_frame_timestamps),
-                )
+            step_record = StepRecord(
+                step_number=step_index + 1,
+                step_start=step_start,
+                step_start_monotonic=prev_step_end,
+                step_end=step_start + dt,
+                step_end_monotonic=prev_step_end + dt,
+                first_frame_monotonic=step_frame_timestamps[0],
+                last_frame_monotonic=step_frame_timestamps[-1],
+                execution_time=execution_time,
+                step_duration=dt,
+                wait_time=dt - execution_time,
+                frame_count=len(step_frame_timestamps),
+                delay=delay,
             )
-            prev_step_end += dt  # update checkpoint
+
+            self._step_records.append(step_record)
+            prev_step_end = step_record.step_end_monotonic  # update checkpoint
