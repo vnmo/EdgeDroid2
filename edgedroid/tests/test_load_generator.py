@@ -142,7 +142,7 @@ class TestCommon(unittest.TestCase):
                 client.send(common.pack_response(*response))
                 logger.debug(f"Unpacking server side...")
 
-                recv_t, recv_img, recv_text = next(stream)
+                recv_t, recv_img, recv_text, recv_size = next(stream)
                 self.assertEqual(t, recv_t)
                 self.assertEqual(test_text, recv_text)
                 nptest.assert_array_equal(test_image, recv_img)

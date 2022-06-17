@@ -136,7 +136,9 @@ class StreamSocketEmulation:
 
                     # wait for response
                     logger.debug("Waiting for response from server")
-                    transition, guidance_img, guidance_text = next(resp_stream)
+                    transition, guidance_img, guidance_text, resp_size_bytes = next(
+                        resp_stream
+                    )
                     recv_time = time.monotonic()
                     rtt = recv_time - send_time
                     logger.debug("Received response from server")
@@ -154,6 +156,8 @@ class StreamSocketEmulation:
                             "transition": transition,
                             "send_time": start_time + (send_time - start_time_mono),
                             "rtt": rtt,
+                            "send_size_bytes": len(payload),
+                            "recv_size_bytes": resp_size_bytes,
                         }
                     )
 

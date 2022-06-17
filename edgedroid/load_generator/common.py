@@ -40,6 +40,7 @@ class Response(NamedTuple):
     transition: bool
     image_guidance: npt.NDArray
     text_guidance: str
+    recv_size_bytes: int
 
 
 def bytes_to_numpy_image(
@@ -118,6 +119,7 @@ def response_stream_unpack(
     try:
         while True:
             resp_header = recv_from_socket(sock, RESP_LEN)
+            resp_size_bytes = RESP_LEN
 
             # unpack the header into its constituent parts
             transition, height, width, channels, img_len, text_len = struct.unpack(
@@ -126,11 +128,12 @@ def response_stream_unpack(
 
             img_data = recv_from_socket(sock, img_len)
             text_data = recv_from_socket(sock, text_len)
+            resp_size_bytes += img_len + text_len
 
             guidance_image = bytes_to_numpy_image(img_data, height, width, channels)
             guidance_text = text_data.decode("utf8")
 
-            yield transition, guidance_image, guidance_text
+            yield transition, guidance_image, guidance_text, resp_size_bytes
     except EOFError:
         logger.warning("Socket was closed")
     finally:
