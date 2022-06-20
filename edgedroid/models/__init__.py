@@ -20,7 +20,12 @@ from typing import Dict, Iterator, List
 import numpy.typing as npt
 import pandas as pd
 
-from .frames import BaseFrameModel, ProbabilisticFrameModel, FrameSet
+from .frames import (
+    BaseFrameSamplingModel,
+    ZeroWaitFrameSamplingModel,
+    FrameSet,
+    IdealFrameSamplingModel,
+)
 from .timings import (
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
@@ -33,10 +38,12 @@ __all__ = [
     "TheoreticalExecutionTimeModel",
     "EmpiricalExecutionTimeModel",
     "FrameSet",
-    "ProbabilisticFrameModel",
+    "ZeroWaitFrameSamplingModel",
     "ModelFrame",
     "EdgeDroidModel",
     "preprocess_data",
+    "IdealFrameSamplingModel",
+    "BaseFrameSamplingModel",
 ]
 
 
@@ -82,7 +89,7 @@ class EdgeDroidModel:
         self,
         frame_trace: FrameSet,
         timing_model: ExecutionTimeModel,
-        frame_model: BaseFrameModel,
+        frame_model: BaseFrameSamplingModel,
     ):
         """
         Parameters
@@ -93,7 +100,7 @@ class EdgeDroidModel:
         timing_model
             An ExecutionTimeModel object to provide the timing information.
         frame_model
-            A BaseFrameModel object to provide frame distribution information at
+            A BaseFrameSamplingModel object to provide frame distribution information at
             runtime.
         """
         super(EdgeDroidModel, self).__init__()

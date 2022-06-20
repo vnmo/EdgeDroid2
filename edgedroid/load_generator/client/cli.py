@@ -64,7 +64,7 @@ from ..common_cli import enable_logging
 )
 @click.option(
     "-m",
-    "--model",
+    "--timing-model",
     type=click.Choice(["empirical", "theoretical", "naive"], case_sensitive=False),
     default="theoretical",
     show_default=True,
@@ -76,6 +76,13 @@ from ..common_cli import enable_logging
     "\t- 'naive' uses a constant execution time equal to the mean execution time of "
     "the underlying data.\n"
     "\t\n",
+)
+@click.option(
+    "-s",
+    "--sampling-strategy",
+    type=click.Choice(["zero-wait", "ideal"], case_sensitive=False),
+    default="zero-wait",
+    show_default=True,
 )
 @click.option(
     "--step-records-output",
@@ -148,7 +155,8 @@ def edgedroid_client(
     neuroticism: float,
     task: str,
     fade_distance: int,
-    model: Literal["empirical", "theoretical", "naive"],
+    timing_model: Literal["empirical", "theoretical", "naive"],
+    sampling_strategy: Literal["zero-wait", "ideal"],
     verbose: bool,
     step_records_output: Optional[pathlib.Path],
     frame_records_output: Optional[pathlib.Path],
@@ -167,7 +175,8 @@ def edgedroid_client(
         neuroticism=neuroticism,
         trace=task,
         fade_distance=fade_distance,
-        model=model,
+        model=timing_model,
+        sampling=sampling_strategy,
     )
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")

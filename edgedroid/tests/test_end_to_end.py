@@ -17,7 +17,7 @@ import unittest
 from loguru import logger
 
 from .. import data as e_data
-from ..models import EdgeDroidModel, ProbabilisticFrameModel
+from ..models import EdgeDroidModel, ZeroWaitFrameSamplingModel
 from ..models.timings import NaiveExecutionTimeModel
 from gabriel_lego.api import FrameResult, LEGOTask
 
@@ -31,7 +31,9 @@ class EndToEndTest(unittest.TestCase):
         trace = f"test"
         logger.debug(f"Testing trace {trace}")
         frameset = e_data.load_default_trace(trace)
-        frame_model = ProbabilisticFrameModel(e_data.load_default_frame_probabilities())
+        frame_model = ZeroWaitFrameSamplingModel(
+            e_data.load_default_frame_probabilities()
+        )
 
         timing_model = NaiveExecutionTimeModel(0)
 

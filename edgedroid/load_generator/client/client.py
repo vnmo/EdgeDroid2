@@ -25,10 +25,12 @@ from loguru import logger
 from ..common import response_stream_unpack, pack_frame
 from ... import data as e_data
 from ...models import (
+    BaseFrameSamplingModel,
     EdgeDroidModel,
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
-    ProbabilisticFrameModel,
+    IdealFrameSamplingModel,
+    ZeroWaitFrameSamplingModel,
     ModelFrame,
     TheoreticalExecutionTimeModel,
 )
@@ -45,6 +47,7 @@ class StreamSocketEmulation:
         trace: str,
         fade_distance: int,
         model: Literal["theoretical", "empirical", "naive"] = "theoretical",
+        sampling: Literal["zero-wait", "ideal"] = "zero-wait",
     ):
         logger.info(
             f"Initializing EdgeDroid model with neuroticism {neuroticism:0.2f} and "
@@ -80,7 +83,17 @@ class StreamSocketEmulation:
             case _:
                 raise NotImplementedError(f"Unrecognized execution time model: {model}")
 
-        frame_model = ProbabilisticFrameModel(e_data.load_default_frame_probabilities())
+        match sampling:
+            case "zero-wait":
+                sampling_cls = ZeroWaitFrameSamplingModel
+            case "ideal":
+                sampling_cls = IdealFrameSamplingModel
+            case _:
+                raise NotImplementedError(f"No such sampling strategy: {sampling}")
+
+        frame_model: BaseFrameSamplingModel = sampling_cls(
+            e_data.load_default_frame_probabilities()
+        )
 
         self._model = EdgeDroidModel(
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model

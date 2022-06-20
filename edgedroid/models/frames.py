@@ -164,19 +164,7 @@ class FrameSet:
         return FrameSet(name=task_name, initial_frame=init_frame, steps=steps)
 
 
-class BaseFrameModel(abc.ABC):
-    @abc.abstractmethod
-    def step_iterator(
-        self, target_time: float, infinite: bool = False
-    ) -> Iterator[Tuple[str, float]]:
-        pass
-
-    @abc.abstractmethod
-    def get_frame_at_instant(self, instant: float | int, step_time: float | int) -> str:
-        pass
-
-
-class ProbabilisticFrameModel(BaseFrameModel):
+class BaseFrameSamplingModel(abc.ABC):
     def __init__(self, probabilities: pd.DataFrame, success_tag: str = "success"):
         """
         Parameters
@@ -234,7 +222,7 @@ class ProbabilisticFrameModel(BaseFrameModel):
             columns.remove("bin_end")
         except KeyError:
             raise RuntimeError(
-                "Probability dataframe must include bin_start " "and bin_end columns."
+                "Probability dataframe must include bin_start and bin_end columns."
             )
 
         prob_sums = np.zeros(len(probabilities.index))
@@ -244,7 +232,7 @@ class ProbabilisticFrameModel(BaseFrameModel):
 
         if not np.all(np.isclose(prob_sums, 1.0)):
             raise RuntimeError(
-                "Sum of probabilities for each bin must be " "equal to 1.0."
+                "Sum of probabilities for each bin must be equal to 1.0."
             )
 
         # process probabilities
@@ -292,6 +280,14 @@ class ProbabilisticFrameModel(BaseFrameModel):
             # if step time is 0 we can immediately assume step is over!
             return self._success_tag
 
+    @abc.abstractmethod
+    def step_iterator(
+        self, target_time: float, infinite: bool = False
+    ) -> Iterator[Tuple[str, float]]:
+        pass
+
+
+class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
     def step_iterator(
         self, target_time: float, infinite: bool = False
     ) -> Iterator[Tuple[str, float]]:
@@ -314,4 +310,17 @@ class ProbabilisticFrameModel(BaseFrameModel):
             instant = time.monotonic() - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
             if instant > target_time and not infinite:
+                return
+
+
+class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
+    def step_iterator(
+        self, target_time: float, infinite: bool = False
+    ) -> Iterator[Tuple[str, float]]:
+        step_start = time.monotonic()
+        while True:
+            time.sleep(max(target_time - (time.monotonic() - step_start), 0))
+            dt = time.monotonic() - step_start
+            yield self.get_frame_at_instant(dt, target_time), dt
+            if dt > target_time and not infinite:
                 return
