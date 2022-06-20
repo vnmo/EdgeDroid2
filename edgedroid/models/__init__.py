@@ -60,12 +60,13 @@ class StepRecord:
     step_end_monotonic: float
     first_frame_monotonic: float
     last_frame_monotonic: float
+    last_frame_rtt: float
     execution_time: float
     step_duration: float
     time_to_feedback: float  # difference between step duration and execution time
     wait_time: float  # time between execution time and when final sample is taken
     frame_count: int
-    delay: float  # dt between last sample taken and next step start
+    delay: float  # previous step last_frame_rtt
 
     def to_dict(self) -> Dict[str, int | float]:
         return asdict(self)
@@ -159,6 +160,7 @@ class EdgeDroidModel:
             step_end_monotonic=prev_step_end + dt,
             first_frame_monotonic=step_frame_timestamps[0],
             last_frame_monotonic=step_frame_timestamps[-1],
+            last_frame_rtt=(prev_step_end + dt) - step_frame_timestamps[-1],
             execution_time=0.0,
             step_duration=dt,
             time_to_feedback=dt,
@@ -174,7 +176,8 @@ class EdgeDroidModel:
             # get a step duration
             # calculate delay between last submitted frame from previous step and
             # ending of step (i.e. when feedback was received)
-            delay = prev_step_end - step_frame_timestamps[-1]
+            # delay = prev_step_end - step_frame_timestamps[-1]
+            delay = self._step_records[-1].last_frame_rtt
             execution_time = self._timings.set_delay(delay).get_execution_time()
 
             # clear the frame timestamp buffer
@@ -204,6 +207,7 @@ class EdgeDroidModel:
             dt = time.monotonic() - prev_step_end  # duration of step
 
             step_start = task_start + (prev_step_end - task_start_mono)
+            # TODO: this is a lot of processing... push to another process?
             step_record = StepRecord(
                 step_number=step_index + 1,
                 step_start=step_start,
@@ -212,6 +216,7 @@ class EdgeDroidModel:
                 step_end_monotonic=prev_step_end + dt,
                 first_frame_monotonic=step_frame_timestamps[0],
                 last_frame_monotonic=step_frame_timestamps[-1],
+                last_frame_rtt=(prev_step_end + dt) - step_frame_timestamps[-1],
                 execution_time=execution_time,
                 step_duration=dt,
                 time_to_feedback=dt - execution_time,
