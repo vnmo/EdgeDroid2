@@ -28,7 +28,7 @@ from ...models import (
     EdgeDroidModel,
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
-    FrameModel,
+    ProbabilisticFrameModel,
     ModelFrame,
     TheoreticalExecutionTimeModel,
 )
@@ -80,7 +80,7 @@ class StreamSocketEmulation:
             case _:
                 raise NotImplementedError(f"Unrecognized execution time model: {model}")
 
-        frame_model = FrameModel(e_data.load_default_frame_probabilities())
+        frame_model = ProbabilisticFrameModel(e_data.load_default_frame_probabilities())
 
         self._model = EdgeDroidModel(
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import abc
 import time
 from collections import deque
 from os import PathLike
@@ -163,7 +164,19 @@ class FrameSet:
         return FrameSet(name=task_name, initial_frame=init_frame, steps=steps)
 
 
-class FrameModel:
+class BaseFrameModel(abc.ABC):
+    @abc.abstractmethod
+    def step_iterator(
+        self, target_time: float, infinite: bool = False
+    ) -> Iterator[Tuple[str, float]]:
+        pass
+
+    @abc.abstractmethod
+    def get_frame_at_instant(self, instant: float | int, step_time: float | int) -> str:
+        pass
+
+
+class ProbabilisticFrameModel(BaseFrameModel):
     def __init__(self, probabilities: pd.DataFrame, success_tag: str = "success"):
         """
         Parameters

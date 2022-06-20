@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from numpy import testing as nptesting
 
-from ..models import FrameModel
+from ..models import ProbabilisticFrameModel
 from ..data import load_default_frame_probabilities
 
 
@@ -27,7 +27,7 @@ class TestFrameModel(unittest.TestCase):
         # load data
         self.probs = load_default_frame_probabilities()
 
-        self.model = FrameModel(self.probs)
+        self.model = ProbabilisticFrameModel(self.probs)
 
         self.probs["interval"] = pd.IntervalIndex.from_arrays(
             left=self.probs["bin_start"],
