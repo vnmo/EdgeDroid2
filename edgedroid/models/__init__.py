@@ -62,9 +62,10 @@ class StepRecord:
     last_frame_monotonic: float
     execution_time: float
     step_duration: float
-    wait_time: float
+    time_to_feedback: float  # difference between step duration and execution time
+    wait_time: float  # time between execution time and when final sample is taken
     frame_count: int
-    delay: float
+    delay: float  # dt between last sample taken and next step start
 
     def to_dict(self) -> Dict[str, int | float]:
         return asdict(self)
@@ -160,7 +161,8 @@ class EdgeDroidModel:
             last_frame_monotonic=step_frame_timestamps[-1],
             execution_time=0.0,
             step_duration=dt,
-            wait_time=dt,
+            time_to_feedback=dt,
+            wait_time=step_frame_timestamps[-1] - task_start_mono,
             frame_count=len(step_frame_timestamps),
             delay=0,
         )
@@ -212,7 +214,8 @@ class EdgeDroidModel:
                 last_frame_monotonic=step_frame_timestamps[-1],
                 execution_time=execution_time,
                 step_duration=dt,
-                wait_time=dt - execution_time,
+                time_to_feedback=dt - execution_time,
+                wait_time=step_frame_timestamps[-1] - (prev_step_end + execution_time),
                 frame_count=len(step_frame_timestamps),
                 delay=delay,
             )
