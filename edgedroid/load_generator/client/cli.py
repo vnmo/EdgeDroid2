@@ -17,6 +17,7 @@ import socket
 from typing import Literal, Optional
 
 import click
+import yaml
 from loguru import logger
 
 from .client import StreamSocketEmulation
@@ -85,31 +86,45 @@ from ..common_cli import enable_logging
     show_default=True,
 )
 @click.option(
-    "--step-records-output",
+    "-o",
+    "--output-dir",
     type=click.Path(
-        file_okay=True,
-        dir_okay=False,
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
         writable=True,
         resolve_path=True,
         path_type=pathlib.Path,
     ),
     default=None,
     show_default=True,
-    help="Specifies a path on which to output step metrics in CSV format.",
 )
-@click.option(
-    "--frame-records-output",
-    type=click.Path(
-        file_okay=True,
-        dir_okay=False,
-        writable=True,
-        resolve_path=True,
-        path_type=pathlib.Path,
-    ),
-    default=None,
-    show_default=True,
-    help="Specifies a path on which to output frame metrics in CSV format.",
-)
+# @click.option(
+#     "--step-records-output",
+#     type=click.Path(
+#         file_okay=True,
+#         dir_okay=False,
+#         writable=True,
+#         resolve_path=True,
+#         path_type=pathlib.Path,
+#     ),
+#     default=None,
+#     show_default=True,
+#     help="Specifies a path on which to output step metrics in CSV format.",
+# )
+# @click.option(
+#     "--frame-records-output",
+#     type=click.Path(
+#         file_okay=True,
+#         dir_okay=False,
+#         writable=True,
+#         resolve_path=True,
+#         path_type=pathlib.Path,
+#     ),
+#     default=None,
+#     show_default=True,
+#     help="Specifies a path on which to output frame metrics in CSV format.",
+# )
 @click.option(
     "-v",
     "--verbose",
@@ -136,19 +151,19 @@ from ..common_cli import enable_logging
     help="Maximum connection retries, set to a 0 or a "
     "negative value for infinite retries.",
 )
-@click.option(
-    "--log-file",
-    type=click.Path(
-        file_okay=True,
-        dir_okay=False,
-        writable=True,
-        resolve_path=True,
-        path_type=pathlib.Path,
-    ),
-    default=None,
-    show_default=True,
-    help="Save a copy of the logs to a file.",
-)
+# @click.option(
+#     "--log-file",
+#     type=click.Path(
+#         file_okay=True,
+#         dir_okay=False,
+#         writable=True,
+#         resolve_path=True,
+#         path_type=pathlib.Path,
+#     ),
+#     default=None,
+#     show_default=True,
+#     help="Save a copy of the logs to a file.",
+# )
 def edgedroid_client(
     host: str,
     port: int,
@@ -158,17 +173,29 @@ def edgedroid_client(
     timing_model: Literal["empirical", "theoretical", "naive"],
     sampling_strategy: Literal["zero-wait", "ideal"],
     verbose: bool,
-    step_records_output: Optional[pathlib.Path],
-    frame_records_output: Optional[pathlib.Path],
+    # step_records_output: Optional[pathlib.Path],
+    # frame_records_output: Optional[pathlib.Path],
+    output_dir: Optional[pathlib.Path],
     conn_tout: float,
     max_attempts: int,
-    log_file: Optional[pathlib.Path],
+    # log_file: Optional[pathlib.Path],
 ):
     """
     Run an EdgeDroid2 client.
 
     Connects to HOST:PORT and runs an emulation.
     """
+
+    # prepare output paths
+    if output_dir is not None:
+        output_dir.mkdir(exist_ok=True, parents=True)
+        log_file = output_dir / "client.log"
+        step_records_output = output_dir / "client.steps.csv"
+        frame_records_output = output_dir / "client.frames.csv"
+    else:
+        log_file = None
+        step_records_output = None
+        frame_records_output = None
 
     enable_logging(verbose, log_file=log_file)
     emulation = StreamSocketEmulation(
@@ -234,3 +261,19 @@ def edgedroid_client(
             frame_metrics = emulation.get_frame_metrics()
             logger.info(f"Writing frame metrics to {frame_records_output}")
             frame_metrics.to_csv(frame_records_output)
+
+        if output_dir is not None:
+            with (output_dir / "client.metadata.yml").open("w") as fp:
+                yaml.safe_dump(
+                    dict(
+                        host=f"{host}:{port}",
+                        neuroticism=neuroticism,
+                        task=task,
+                        fade_distance=fade_distance,
+                        timing_model=timing_model,
+                        sampling_strategy=sampling_strategy,
+                    ),
+                    stream=fp,
+                    explicit_start=True,
+                    explicit_end=True,
+                )
