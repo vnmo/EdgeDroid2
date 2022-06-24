@@ -16,7 +16,7 @@ import contextlib
 import socket
 import time
 from collections import deque
-from typing import Callable, Literal
+from typing import Any, Callable, Dict, Literal
 
 import click
 import pandas as pd
@@ -29,6 +29,7 @@ from ...models import (
     EdgeDroidModel,
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
+    HoldFrameSamplingModel,
     IdealFrameSamplingModel,
     ZeroWaitFrameSamplingModel,
     ModelFrame,
@@ -47,7 +48,8 @@ class StreamSocketEmulation:
         trace: str,
         fade_distance: int,
         model: Literal["theoretical", "empirical", "naive"] = "theoretical",
-        sampling: Literal["zero-wait", "ideal"] = "zero-wait",
+        sampling: Literal["zero-wait", "ideal", "hold"] = "zero-wait",
+        sampling_kws: Dict[str, Any] = {},
     ):
         logger.info(
             f"Initializing EdgeDroid model with neuroticism {neuroticism:0.2f} and "
@@ -88,11 +90,14 @@ class StreamSocketEmulation:
                 sampling_cls = ZeroWaitFrameSamplingModel
             case "ideal":
                 sampling_cls = IdealFrameSamplingModel
+            case "hold":
+                sampling_cls = HoldFrameSamplingModel
             case _:
                 raise NotImplementedError(f"No such sampling strategy: {sampling}")
 
         frame_model: BaseFrameSamplingModel = sampling_cls(
-            e_data.load_default_frame_probabilities()
+            e_data.load_default_frame_probabilities(),
+            **sampling_kws,
         )
 
         self._model = EdgeDroidModel(

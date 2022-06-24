@@ -81,8 +81,14 @@ from ..common_cli import enable_logging
 @click.option(
     "-s",
     "--sampling-strategy",
-    type=click.Choice(["zero-wait", "ideal"], case_sensitive=False),
+    type=click.Choice(["zero-wait", "ideal", "hold"], case_sensitive=False),
     default="zero-wait",
+    show_default=True,
+)
+@click.option(
+    "--hold-time-seconds",
+    type=click.FloatRange(min=0, min_open=False),
+    default=0.5,
     show_default=True,
 )
 @click.option(
@@ -171,7 +177,7 @@ def edgedroid_client(
     task: str,
     fade_distance: int,
     timing_model: Literal["empirical", "theoretical", "naive"],
-    sampling_strategy: Literal["zero-wait", "ideal"],
+    sampling_strategy: Literal["zero-wait", "ideal", "hold"],
     verbose: bool,
     # step_records_output: Optional[pathlib.Path],
     # frame_records_output: Optional[pathlib.Path],
@@ -179,6 +185,7 @@ def edgedroid_client(
     conn_tout: float,
     max_attempts: int,
     # log_file: Optional[pathlib.Path],
+    **sampling_kws,
 ):
     """
     Run an EdgeDroid2 client.
@@ -204,6 +211,7 @@ def edgedroid_client(
         fade_distance=fade_distance,
         model=timing_model,
         sampling=sampling_strategy,
+        sampling_kws=sampling_kws,
     )
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")

@@ -25,6 +25,7 @@ from .frames import (
     ZeroWaitFrameSamplingModel,
     FrameSet,
     IdealFrameSamplingModel,
+    HoldFrameSamplingModel,
 )
 from .timings import (
     EmpiricalExecutionTimeModel,
@@ -44,6 +45,7 @@ __all__ = [
     "preprocess_data",
     "IdealFrameSamplingModel",
     "BaseFrameSamplingModel",
+    "HoldFrameSamplingModel",
 ]
 
 

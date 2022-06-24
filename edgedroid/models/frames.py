@@ -324,3 +324,31 @@ class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
             yield self.get_frame_at_instant(dt, target_time), dt
             if dt > target_time and not infinite:
                 return
+
+
+class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
+    """
+    Doesn't sample for a specified period of time at the beginning of each step.
+    """
+
+    def __init__(
+        self,
+        probabilities: pd.DataFrame,
+        hold_time_seconds: float,
+        success_tag: str = "success",
+    ):
+        super(HoldFrameSamplingModel, self).__init__(
+            probabilities, success_tag=success_tag
+        )
+        self._hold_time = hold_time_seconds
+
+    def step_iterator(
+        self, target_time: float, infinite: bool = False
+    ) -> Iterator[Tuple[str, float]]:
+        step_start = time.monotonic()
+        time.sleep(self._hold_time)
+        while True:
+            instant = time.monotonic() - step_start
+            yield self.get_frame_at_instant(instant, target_time), instant
+            if instant > target_time and not infinite:
+                return
