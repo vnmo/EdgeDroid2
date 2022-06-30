@@ -81,15 +81,21 @@ from ..common_cli import enable_logging
 @click.option(
     "-s",
     "--sampling-strategy",
-    type=click.Choice(["zero-wait", "ideal", "hold"], case_sensitive=False),
+    type=click.Choice(["zero-wait", "ideal", "hold", "regular"], case_sensitive=False),
     default="zero-wait",
     show_default=True,
 )
 @click.option(
     "--hold-time-seconds",
     type=click.FloatRange(min=0, min_open=False),
-    default=0.5,
-    show_default=True,
+    default=None,
+    show_default=False,
+)
+@click.option(
+    "--sampling-interval-seconds",
+    type=click.FloatRange(min=0, min_open=False),
+    default=None,
+    show_default=False,
 )
 @click.option(
     "-o",

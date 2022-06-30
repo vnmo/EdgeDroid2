@@ -47,6 +47,9 @@ class ServerProcess(Process):
                 self._ready_cond.wait()
 
     def run(self) -> None:
+        # enable logging
+        logger.enable("edgedroid")
+
         # create a unix socket to listen on
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -107,13 +110,16 @@ class ClientProcess(Process):
             self._guidance_send.send((img.tolist(), instruction))
 
     def run(self) -> None:
+        # enable logging
+        logger.enable("edgedroid")
+
         self._is_finished.clear()
         emulation = StreamSocketEmulation(
             neuroticism=self._neuro,
             trace=self._task,
             fade_distance=self._fade_dist,
-            # sampling="hold",
-            # sampling_kws={"hold_time_seconds": 1.0},
+            sampling="regular",
+            sampling_kws={"sampling_interval_seconds": 1.0},
         )
         socket_addr = f"/tmp/{uuid.uuid4()}.sock"
 
@@ -158,9 +164,9 @@ def demo_loop(
     # enable logging
     logger.enable("edgedroid")
     logger.remove()
-
     logger.add(
         sys.stderr,
+        level="DEBUG",
         enqueue=True,
         colorize=True,
         backtrace=True,

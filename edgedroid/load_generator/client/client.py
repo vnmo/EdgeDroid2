@@ -34,6 +34,7 @@ from ...models import (
     ZeroWaitFrameSamplingModel,
     ModelFrame,
     TheoreticalExecutionTimeModel,
+    RegularFrameSamplingModel,
 )
 
 import numpy.typing as npt
@@ -48,7 +49,7 @@ class StreamSocketEmulation:
         trace: str,
         fade_distance: int,
         model: Literal["theoretical", "empirical", "naive"] = "theoretical",
-        sampling: Literal["zero-wait", "ideal", "hold"] = "zero-wait",
+        sampling: Literal["zero-wait", "ideal", "hold", "regular"] = "zero-wait",
         sampling_kws: Dict[str, Any] = {},
     ):
         logger.info(
@@ -92,6 +93,8 @@ class StreamSocketEmulation:
                 sampling_cls = IdealFrameSamplingModel
             case "hold":
                 sampling_cls = HoldFrameSamplingModel
+            case "regular":
+                sampling_cls = RegularFrameSamplingModel
             case _:
                 raise NotImplementedError(f"No such sampling strategy: {sampling}")
 
@@ -138,7 +141,8 @@ class StreamSocketEmulation:
         with contextlib.closing(response_stream_unpack(sock)) as resp_stream:
             for step_num, model_step in enumerate(self._model.play_steps()):
                 logger.info(f"Current step: {step_num}")
-                for model_frame in model_step:
+                ti = time.monotonic()
+                for frame_index, model_frame in enumerate(model_step):
                     # package and send the frame
                     logger.debug(
                         f"Sending frame:\n"
@@ -191,5 +195,9 @@ class StreamSocketEmulation:
                                 "server, aborting"
                             )
                             raise click.Abort()
+
+                dt = time.monotonic() - ti
+                fps = (frame_index + 1) / dt
+                logger.debug(f"Step performance: {fps:0.2f} FPS")
 
         logger.warning("Emulation finished")

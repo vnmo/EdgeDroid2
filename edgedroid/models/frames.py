@@ -24,6 +24,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import yaml
+from loguru import logger
 
 
 class FrameSet:
@@ -352,3 +353,33 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
             yield self.get_frame_at_instant(instant, target_time), instant
             if instant > target_time and not infinite:
                 return
+
+
+class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
+    """
+    Samples in constant discrete time intervals. Defaults to zero-wait sampling if
+    the time between calls to the step iterator is longer than the sampling interval!
+    """
+
+    def __init__(
+        self,
+        probabilities: pd.DataFrame,
+        sampling_interval_seconds: float,
+        success_tag: str = "success",
+    ):
+        super(RegularFrameSamplingModel, self).__init__(
+            probabilities, success_tag=success_tag
+        )
+        self._interval = sampling_interval_seconds
+
+    def step_iterator(
+        self, target_time: float, infinite: bool = False
+    ) -> Iterator[Tuple[str, float]]:
+        time.sleep(self._interval)
+        for frame in super(RegularFrameSamplingModel, self).step_iterator(
+            target_time, infinite
+        ):
+            t_sample = time.monotonic()
+            yield frame
+            dt = time.monotonic() - t_sample
+            time.sleep(max(0.0, self._interval - dt))
