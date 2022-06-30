@@ -89,12 +89,20 @@ class StreamSocketEmulation:
         match sampling:
             case "zero-wait":
                 sampling_cls = ZeroWaitFrameSamplingModel
+                sampling_kws = {}
             case "ideal":
                 sampling_cls = IdealFrameSamplingModel
+                sampling_kws = {}
             case "hold":
                 sampling_cls = HoldFrameSamplingModel
+                sampling_kws = {"hold_time_seconds": sampling_kws["hold_time_seconds"]}
             case "regular":
                 sampling_cls = RegularFrameSamplingModel
+                sampling_kws = {
+                    "sampling_interval_seconds": sampling_kws[
+                        "sampling_interval_seconds"
+                    ]
+                }
             case _:
                 raise NotImplementedError(f"No such sampling strategy: {sampling}")
 
