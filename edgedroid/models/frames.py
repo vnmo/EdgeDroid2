@@ -375,11 +375,15 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
     def step_iterator(
         self, target_time: float, infinite: bool = False
     ) -> Iterator[Tuple[str, float]]:
+        step_start = time.monotonic()
         time.sleep(self._interval)
-        for frame in super(RegularFrameSamplingModel, self).step_iterator(
-            target_time, infinite
-        ):
+
+        while True:
             t_sample = time.monotonic()
-            yield frame
+            instant = t_sample - step_start
+            yield self.get_frame_at_instant(instant, target_time), instant
+            if instant > target_time and not infinite:
+                return
+
             dt = time.monotonic() - t_sample
             time.sleep(max(0.0, self._interval - dt))
