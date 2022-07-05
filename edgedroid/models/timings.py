@@ -15,9 +15,10 @@
 from __future__ import annotations
 
 import abc
+import copy
 import enum
 from collections import deque
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -180,6 +181,11 @@ def winsorize_series(e: pd.Series) -> npt.NDArray:
     return e
 
 
+# workaround for typing methods of classes as returning the same type as the
+# enclosing class, while also working for extending classes
+TTimingModel = TypeVar("TTimingModel", bound="ExecutionTimeModel")
+
+
 class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
     """
     Defines the general interface for execution time models.
@@ -194,7 +200,7 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         return self.get_execution_time()
 
     @abc.abstractmethod
-    def set_delay(self, delay: float | int) -> ExecutionTimeModel:
+    def set_delay(self: TTimingModel, delay: float | int) -> TTimingModel:
         """
         Update the internal delay of this model.
 
@@ -209,6 +215,18 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
     def get_execution_time(self) -> float:
         """
         Obtain an execution time from this model.
+
+        Returns
+        -------
+        float
+            An execution time value in seconds.
+        """
+        pass
+
+    @abc.abstractmethod
+    def get_expected_execution_time(self) -> float:
+        """
+        Returns the *expected* execution time for the current state of the model.
 
         Returns
         -------
@@ -234,6 +252,20 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         Resets the internal state to the starting state.
         """
         pass
+
+    def copy(self: TTimingModel) -> TTimingModel:
+        """
+        Returns a (deep) copy of this model.
+        """
+        return copy.deepcopy(self)
+
+    def fresh_copy(self: TTimingModel) -> TTimingModel:
+        """
+        Returns a (deep) copy of this model, reset to its initial state.
+        """
+        model = self.copy()
+        model.reset()
+        return model
 
 
 class NaiveExecutionTimeModel(ExecutionTimeModel):
@@ -278,12 +310,15 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
         super(NaiveExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
 
-    def set_delay(self, delay: float | int) -> ExecutionTimeModel:
+    def set_delay(self: TTimingModel, delay: float | int) -> TTimingModel:
         # no-op
         return self
 
     def get_execution_time(self) -> float:
         return self._exec_time
+
+    def get_expected_execution_time(self) -> float:
+        return self.get_execution_time()
 
     def state_info(self) -> Dict[str, Any]:
         return {}
@@ -371,6 +406,13 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         # random state
         self._rng = np.random.default_rng()
 
+    def copy(self: TTimingModel) -> TTimingModel:
+        model_copy = super(EmpiricalExecutionTimeModel, self).copy()
+
+        # make sure to reinit the random number generator
+        model_copy._rng = np.random.default_rng()
+        return model_copy
+
     def reset(self) -> None:
         # initial state
         self._seq = 1
@@ -384,7 +426,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         ][0]
         self._transition = Transition.NONE
 
-    def set_delay(self, delay: float | int) -> ExecutionTimeModel:
+    def set_delay(self: TTimingModel, delay: float | int) -> TTimingModel:
         self._seq += 1
         self._delay = delay
         new_impairment = self._impairment_bins[self._impairment_bins.contains(delay)][0]
@@ -411,17 +453,21 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
         return self
 
-    def get_execution_time(self) -> float:
+    def _get_data_for_current_state(self) -> npt.NDArray:
         # get the appropriate data view
         try:
-            data: npt.NDArray = self._data_views[
+            return self._data_views[
                 (self._impairment, self._binned_duration, self._transition.value)
             ]
         except KeyError:
             raise ModelException(f"No data for model state: {self.state_info()}!")
 
-        # finally, sample from the data and return an execution time in seconds
-        return self._rng.choice(data, replace=False)
+    def get_execution_time(self) -> float:
+        # sample from the data and return an execution time in seconds
+        return self._rng.choice(self._get_data_for_current_state(), replace=False)
+
+    def get_expected_execution_time(self) -> float:
+        return self._get_data_for_current_state().mean()
 
     def state_info(self) -> Dict[str, Any]:
         return {
@@ -483,16 +529,20 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             k, loc, scale = distribution.fit(exec_times)
             self._dists[imp_dur_trans] = distribution.freeze(loc=loc, scale=scale, K=k)
 
-    def get_execution_time(self) -> float:
+    def _get_dist_for_current_state(self) -> stats.rv_continuous:
         # get the appropriate distribution
         try:
-            dist = self._dists[
+            return self._dists[
                 (self._impairment, self._binned_duration, self._transition.value)
             ]
         except KeyError:
             raise ModelException(f"No data for model state: {self.state_info()}!")
 
-        # finally, sample from the dist and return an execution time in seconds
+    def get_execution_time(self) -> float:
+        # sample from the dist and return an execution time in seconds
         # note that we can't return negative values, so we'll end up changing the
         # distribution slightly by truncating at 0
-        return max(dist.rvs(), 0)
+        return max(self._get_dist_for_current_state().rvs(), 0)
+
+    def get_expected_execution_time(self) -> float:
+        return self._get_dist_for_current_state().mean()
