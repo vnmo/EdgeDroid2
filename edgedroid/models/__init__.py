@@ -198,7 +198,9 @@ class EdgeDroidModel:
                 # replay frames for step
                 for seq, (frame_tag, instant) in enumerate(
                     self._frame_dists.step_iterator(
-                        target_time=execution_time, infinite=True
+                        target_time=execution_time,
+                        infinite=True,
+                        delay=delay,
                     )
                 ):
                     self._frame_count += 1

@@ -24,7 +24,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import yaml
-from loguru import logger
 
 
 class FrameSet:
@@ -283,14 +282,20 @@ class BaseFrameSamplingModel(abc.ABC):
 
     @abc.abstractmethod
     def step_iterator(
-        self, target_time: float, infinite: bool = False
+        self,
+        target_time: float,
+        delay: float,
+        infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         pass
 
 
 class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
     def step_iterator(
-        self, target_time: float, infinite: bool = False
+        self,
+        target_time: float,
+        delay: float,
+        infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         """
         An iterator over the frame tags in a step.
@@ -316,7 +321,10 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
 
 class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
     def step_iterator(
-        self, target_time: float, infinite: bool = False
+        self,
+        target_time: float,
+        delay: float,
+        infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
         while True:
@@ -344,7 +352,10 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
         self._hold_time = hold_time_seconds
 
     def step_iterator(
-        self, target_time: float, infinite: bool = False
+        self,
+        target_time: float,
+        delay: float,
+        infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
         time.sleep(self._hold_time)
@@ -373,7 +384,10 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
         self._interval = sampling_interval_seconds
 
     def step_iterator(
-        self, target_time: float, infinite: bool = False
+        self,
+        target_time: float,
+        delay: float,
+        infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
         time.sleep(self._interval)
