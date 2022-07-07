@@ -20,13 +20,13 @@ from typing import Dict, Iterator, List
 import numpy.typing as npt
 import pandas as pd
 
-from .frames import (
+from .sampling import (
     BaseFrameSamplingModel,
-    ZeroWaitFrameSamplingModel,
     FrameSet,
-    IdealFrameSamplingModel,
     HoldFrameSamplingModel,
+    IdealFrameSamplingModel,
     RegularFrameSamplingModel,
+    ZeroWaitFrameSamplingModel,
 )
 from .timings import (
     EmpiricalExecutionTimeModel,

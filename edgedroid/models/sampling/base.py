@@ -25,8 +25,6 @@ import numpy.typing as npt
 import pandas as pd
 import yaml
 
-from .timings import ExecutionTimeModel
-
 
 class FrameSet:
     """
@@ -403,18 +401,3 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
 
             dt = time.monotonic() - t_sample
             time.sleep(max(0.0, self._interval - dt))
-
-
-class BaseAdaptiveFrameSamplingModel(BaseFrameSamplingModel, metaclass=abc.ABCMeta):
-    def __init__(
-        self,
-        probabilities: pd.DataFrame,
-        execution_time_model: ExecutionTimeModel,
-        success_tag: str = "success",
-    ):
-        super(BaseAdaptiveFrameSamplingModel, self).__init__(
-            probabilities=probabilities,
-            success_tag=success_tag,
-        )
-
-        self._timing_model = execution_time_model.copy()
