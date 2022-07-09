@@ -74,29 +74,30 @@ from ..common_cli import enable_logging
     "\b\n"
     "\t- 'empirical' samples directly from the underlying data.\n"
     "\t- 'theoretical' first fits distributions to the data and then samples.\n"
-    "\t- 'naive' uses a constant execution time equal to the mean execution time of "
-    "the underlying data.\n"
+    "\t- 'naive' uses a constant execution time equal to the mean execution time "
+    "of the underlying data.\n"
     "\t\n",
 )
 @click.option(
     "-s",
     "--sampling-strategy",
-    type=click.Choice(["zero-wait", "ideal", "hold", "regular"], case_sensitive=False),
+    type=str,
     default="zero-wait",
     show_default=True,
+    help="[zero-wait|ideal|regular-<seconds>|hold-<seconds>|adaptive-aperiodic]",
 )
-@click.option(
-    "--hold-time-seconds",
-    type=click.FloatRange(min=0, min_open=False),
-    default=None,
-    show_default=False,
-)
-@click.option(
-    "--sampling-interval-seconds",
-    type=click.FloatRange(min=0, min_open=False),
-    default=None,
-    show_default=False,
-)
+# @click.option(
+#     "--hold-time-seconds",
+#     type=click.FloatRange(min=0, min_open=False),
+#     default=None,
+#     show_default=False,
+# )
+# @click.option(
+#     "--sampling-interval-seconds",
+#     type=click.FloatRange(min=0, min_open=False),
+#     default=None,
+#     show_default=False,
+# )
 @click.option(
     "-o",
     "--output-dir",
@@ -183,7 +184,7 @@ def edgedroid_client(
     task: str,
     fade_distance: int,
     timing_model: Literal["empirical", "theoretical", "naive"],
-    sampling_strategy: Literal["zero-wait", "ideal", "hold"],
+    sampling_strategy: str,
     verbose: bool,
     # step_records_output: Optional[pathlib.Path],
     # frame_records_output: Optional[pathlib.Path],
@@ -191,7 +192,6 @@ def edgedroid_client(
     conn_tout: float,
     max_attempts: int,
     # log_file: Optional[pathlib.Path],
-    **sampling_kws,
 ):
     """
     Run an EdgeDroid2 client.
@@ -211,13 +211,13 @@ def edgedroid_client(
         frame_records_output = None
 
     enable_logging(verbose, log_file=log_file)
+
     emulation = StreamSocketEmulation(
         neuroticism=neuroticism,
         trace=task,
         fade_distance=fade_distance,
         model=timing_model,
         sampling=sampling_strategy,
-        sampling_kws=sampling_kws,
     )
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")

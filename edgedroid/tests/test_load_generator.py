@@ -31,7 +31,7 @@ from loguru import logger
 from ..data import load_default_trace
 from ..load_generator import common
 from ..load_generator.client.client import StreamSocketEmulation
-from edgedroid.load_generator.server.server import server
+from ..load_generator.server.server import server
 from ..models import ModelFrame
 
 

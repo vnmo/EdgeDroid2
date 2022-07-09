@@ -16,29 +16,27 @@ import contextlib
 import socket
 import time
 from collections import deque
-from typing import Any, Callable, Dict, Literal
+from typing import Callable, Literal
 
 import click
+import numpy.typing as npt
 import pandas as pd
 from loguru import logger
 
-from ..common import response_stream_unpack, pack_frame
+from ..common import pack_frame, response_stream_unpack
 from ... import data as e_data
 from ...models import (
-    BaseFrameSamplingModel,
+    AperiodicFrameSamplingModel,
     EdgeDroidModel,
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
     HoldFrameSamplingModel,
     IdealFrameSamplingModel,
-    ZeroWaitFrameSamplingModel,
     ModelFrame,
-    TheoreticalExecutionTimeModel,
     RegularFrameSamplingModel,
+    TheoreticalExecutionTimeModel,
+    ZeroWaitFrameSamplingModel,
 )
-
-import numpy.typing as npt
-
 from ...models.timings import NaiveExecutionTimeModel
 
 
@@ -49,17 +47,18 @@ class StreamSocketEmulation:
         trace: str,
         fade_distance: int,
         model: Literal["theoretical", "empirical", "naive"] = "theoretical",
-        sampling: Literal["zero-wait", "ideal", "hold", "regular"] = "zero-wait",
-        sampling_kws: Dict[str, Any] = {},
+        sampling: str = "zero-wait",
     ):
         logger.info(
-            f"Initializing EdgeDroid model with neuroticism {neuroticism:0.2f} and "
-            f"fade distance {fade_distance:d} steps"
+            f"""
+Initializing EdgeDroid model with:
+- {neuroticism=:0.2f}
+- {fade_distance=:d}
+- {trace=}
+- {model=}
+- {sampling=}
+        """
         )
-        logger.info(f"Model type: {model}")
-        logger.info(f"Trace: {trace}")
-
-        # should be able to use a single thread for everything
 
         # first thing first, prepare data
         frameset = e_data.load_default_trace(trace)
@@ -86,30 +85,34 @@ class StreamSocketEmulation:
             case _:
                 raise NotImplementedError(f"Unrecognized execution time model: {model}")
 
-        match sampling:
-            case "zero-wait":
-                sampling_cls = ZeroWaitFrameSamplingModel
-                sampling_kws = {}
-            case "ideal":
-                sampling_cls = IdealFrameSamplingModel
-                sampling_kws = {}
-            case "hold":
-                sampling_cls = HoldFrameSamplingModel
-                sampling_kws = {"hold_time_seconds": sampling_kws["hold_time_seconds"]}
-            case "regular":
-                sampling_cls = RegularFrameSamplingModel
-                sampling_kws = {
-                    "sampling_interval_seconds": sampling_kws[
-                        "sampling_interval_seconds"
-                    ]
-                }
+            # parse the sampling strategy
+        sampling_vec = sampling.split("-")
+        match sampling_vec:
+            case ["zero", "wait"]:
+                frame_model = ZeroWaitFrameSamplingModel(
+                    e_data.load_default_frame_probabilities(),
+                )
+            case ["ideal"]:
+                frame_model = IdealFrameSamplingModel(
+                    e_data.load_default_frame_probabilities(),
+                )
+            case ["hold", time]:
+                frame_model = HoldFrameSamplingModel(
+                    e_data.load_default_frame_probabilities(),
+                    hold_time_seconds=float(time),
+                )
+            case ["regular", time]:
+                frame_model = RegularFrameSamplingModel(
+                    e_data.load_default_frame_probabilities(),
+                    sampling_interval_seconds=float(time),
+                )
+            case ["adaptive", "aperiodic"]:
+                frame_model = AperiodicFrameSamplingModel(
+                    e_data.load_default_frame_probabilities(),
+                    execution_time_model=timing_model,
+                )
             case _:
                 raise NotImplementedError(f"No such sampling strategy: {sampling}")
-
-        frame_model: BaseFrameSamplingModel = sampling_cls(
-            e_data.load_default_frame_probabilities(),
-            **sampling_kws,
-        )
 
         self._model = EdgeDroidModel(
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model

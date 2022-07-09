@@ -14,6 +14,54 @@ from .base import BaseFrameSamplingModel
 from ..timings import ExecutionTimeModel
 
 
+def _aperiodic_instant_iterator(
+    mu: float,
+    alpha: float,
+    beta: float,
+    n_offset: int = 1,
+) -> Iterator[float]:
+    """
+    Iterates over (quasi) optimal sampling intervals for a step, assuming execution
+    times sampled from a Rayleigh distribution with expected value mu.
+
+    Parameters
+    ----------
+    mu
+        Expected value (mean) of the Rayleigh distribution from which execution times
+        are drawn.
+    alpha
+        Penalty parameter.
+    beta
+        Penalty parameter.
+    n_offset
+        Instant from which to start yielding values.
+
+    Yields
+    ------
+    float
+        Sampling instants, expressed in seconds relative to the beginning of the step.
+    """
+
+    sigma = np.sqrt(np.divide(2, np.pi)) * mu
+    const_factor = np.float_power(
+        3 * sigma * np.sqrt(np.divide(alpha, 2 * beta)),
+        np.divide(2, 3),
+    )
+
+    if np.isnan(sigma) or np.isnan(const_factor):
+        raise RuntimeError(
+            f"NaN values in sampling instant calculation! "
+            f"{mu=} "
+            f"{alpha=} "
+            f"{beta=} "
+            f"{sigma=} "
+            f"{const_factor=} "
+        )
+
+    for n in itertools.count(start=n_offset):
+        yield const_factor * np.float_power(n, np.divide(2, 3))
+
+
 def _aperiodic_sampling_instants(
     # t1_seconds: float,
     mu: float,
@@ -49,21 +97,17 @@ def _aperiodic_sampling_instants(
         A numpy array of sampling instants.
     """
 
-    sigma = np.sqrt(np.divide(2, np.pi)) * mu
-    const_factor = np.float_power(
-        3 * sigma * np.sqrt(np.divide(alpha, 2 * beta)),
-        np.divide(2, 3),
+    instant_iter = _aperiodic_instant_iterator(
+        mu=mu, alpha=alpha, beta=beta, n_offset=0
     )
 
-    t0 = const_factor * np.float_power(0, np.divide(2, 3))
-    t1 = const_factor * np.float_power(1, np.divide(2, 3))
+    t0 = next(instant_iter)
+    t1 = next(instant_iter)
     instants = deque([t0, t1])
 
     prev_dt = t1 - t0
 
-    for n in itertools.count(start=2, step=1):
-        tn = const_factor * np.float_power(n, np.divide(2, 3))
-
+    for tn in instant_iter:
         dt = tn - instants[-1]
         if (dt < dt_thresh_s) or ((prev_dt - dt) < ddt_thresh_s):
             return np.array(instants, dtype=float)
@@ -196,9 +240,9 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         self,
         probabilities: pd.DataFrame,
         execution_time_model: ExecutionTimeModel,
-        initial_network_time_guess: float,
-        processing_time: float,
         success_tag: str = "success",
+        init_network_time_guess_seconds: float = 1.0,  # based on exp data
+        processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
         idle_factor: float = 4.0,
         busy_factor: float = 6.0,  # TODO: document, based on power consumption
     ):
@@ -208,14 +252,14 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             success_tag=success_tag,
         )
 
-        self._initial_nt_guess = initial_network_time_guess
+        self._initial_nt_guess = init_network_time_guess_seconds
         self._network_time_sum = 0.0
         self._network_time_count = 0
 
         self._idle_factor = idle_factor
         self._busy_factor = busy_factor
 
-        self._processing_time = processing_time
+        self._processing_time = processing_time_seconds
 
     def step_iterator(
         self,
@@ -233,23 +277,17 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         )
         self._timing_model.set_delay(delay)
 
-        sampling_instants = _aperiodic_sampling_instants(
+        for target_instant in _aperiodic_instant_iterator(
             mu=self._timing_model.get_expected_execution_time(),
             alpha=Tc * (self._busy_factor - self._idle_factor),
             beta=self._idle_factor,
-        )
-
-        for instant in itertools.chain(
-            sampling_instants[:1],
-            itertools.repeat(sampling_instants[-1]),  # repeat the last instant forever.
-            # In practice, this makes the sampling fall back to zero-wait.
         ):
-            time.sleep(max(0, instant - (time.monotonic() - step_start)))
-            tsend = time.monotonic()
+            time.sleep(max(0.0, target_instant - (time.monotonic() - step_start)))
+            instant = (tsend := time.monotonic()) - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
             dt = time.monotonic() - tsend
 
-            self._network_time_sum += dt - self._processing_time
+            self._network_time_sum += max(dt - self._processing_time, 0.0)
             self._network_time_count += 1
 
             if instant > target_time and not infinite:
