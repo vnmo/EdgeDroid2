@@ -236,6 +236,10 @@ class BaseAdaptiveFrameSamplingModel(BaseFrameSamplingModel, metaclass=abc.ABCMe
 
 
 class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
+    """
+    Implements Vishnu's aperiodic sampling.
+    """
+
     def __init__(
         self,
         probabilities: pd.DataFrame,
@@ -245,7 +249,31 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
         idle_factor: float = 4.0,
         busy_factor: float = 6.0,  # TODO: document, based on power consumption
+        network_time_window: int = 10,
     ):
+        """
+
+        Parameters
+        ----------
+        probabilities
+            Frame probabilities
+        execution_time_model
+            An execution time model to predict the next steps execution time.
+        success_tag
+
+        init_network_time_guess_seconds
+            Initial guess for the network time.
+        processing_time_seconds
+            Factor, expressed in seconds, that is subtracted from frame round-trip
+            times, representing the time processing took on the backend.
+        idle_factor
+            Estimated idle power consumption of the client.
+        busy_factor
+            Estimated communication power consumption of the client.
+        network_time_window
+            Size of the network time window, in number of samples, used to calculate
+            the average network time at each step.
+        """
         super(AperiodicFrameSamplingModel, self).__init__(
             probabilities=probabilities,
             execution_time_model=execution_time_model,
@@ -253,8 +281,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         )
 
         self._initial_nt_guess = init_network_time_guess_seconds
-        self._network_time_sum = 0.0
-        self._network_time_count = 0
+        self._network_times = deque(maxlen=network_time_window)
 
         self._idle_factor = idle_factor
         self._busy_factor = busy_factor
@@ -271,8 +298,8 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         step_start = time.monotonic()
 
         Tc = (
-            self._network_time_sum / self._network_time_count
-            if self._network_time_count > 0
+            np.mean(self._network_times)
+            if len(self._network_times) > 0
             else self._initial_nt_guess
         )
         self._timing_model.set_delay(delay)
@@ -287,8 +314,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             yield self.get_frame_at_instant(instant, target_time), instant
             dt = time.monotonic() - tsend
 
-            self._network_time_sum += max(dt - self._processing_time, 0.0)
-            self._network_time_count += 1
+            self._network_times.append(max(dt - self._processing_time, 0.0))
 
             if instant > target_time and not infinite:
                 return
