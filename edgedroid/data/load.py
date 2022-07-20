@@ -32,9 +32,9 @@ __all__ = [
 
 from ..models import FrameSet
 
-_default_neuro_bins = np.array([-np.inf, 1 / 3, 2 / 3, np.inf])
-_default_impairment_bins = np.array([-np.inf, 1.0, 2.0, np.inf])
-_default_duration_bins = np.array([0, 5, 10, np.inf])
+# _default_neuro_bins = np.array([-np.inf, 1 / 3, 2 / 3, np.inf])
+# _default_impairment_bins = np.array([-np.inf, 1.0, 2.0, np.inf])
+# _default_duration_bins = np.array([0, 5, 10, np.inf])
 
 _default_traces = {
     "square00": "md5:29b13222390bc5587e2306c41fc8ba01",
@@ -62,12 +62,16 @@ def load_default_exec_time_data() -> Tuple[
         "model_exec_times.parquet"
     )
 
+    bins_file = resources.files(edgedroid_resources).joinpath("default_bins.npz")
+
+    bins_map = np.load(bins_file)
+
     with as_file(data_file) as fp:
         return (
-            pd.read_parquet(fp).reset_index(),
-            arrays.IntervalArray.from_breaks(_default_neuro_bins, closed="left"),
-            arrays.IntervalArray.from_breaks(_default_impairment_bins, closed="left"),
-            arrays.IntervalArray.from_breaks(_default_duration_bins, closed="left"),
+            pd.read_parquet(fp),
+            arrays.IntervalArray.from_breaks(bins_map["neuroticism"], closed="left"),
+            arrays.IntervalArray.from_breaks(bins_map["impairment"], closed="left"),
+            arrays.IntervalArray.from_breaks(bins_map["duration"], closed="left"),
         )
 
 

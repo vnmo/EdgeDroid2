@@ -291,7 +291,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     def step_iterator(
         self,
         target_time: float,
-        delay: float,
+        ttf: float,
         infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
 
@@ -302,7 +302,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             if len(self._network_times) > 0
             else self._initial_nt_guess
         )
-        self._timing_model.set_delay(delay)
+        self._timing_model.set_ttf(ttf)
 
         for target_instant in _aperiodic_instant_iterator(
             mu=self._timing_model.get_expected_execution_time(),

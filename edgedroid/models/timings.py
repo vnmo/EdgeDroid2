@@ -58,7 +58,7 @@ def preprocess_data(
     - run_id (categorical or int)
     - neuroticism (float)
     - exec_time (float)
-    - delay (float)
+    - ttf (float)
 
     Parameters
     ----------
@@ -67,7 +67,7 @@ def preprocess_data(
     neuro_bins
         Bins to use for neuroticism values.
     impair_bins
-        Bins to use for delay (impairment).
+        Bins to use for time-to-feedback (impairment).
     duration_bins
         Bins to use for sequences of same impairment.
     transition_fade_distance
@@ -79,25 +79,22 @@ def preprocess_data(
         A DataFrame.
     """
 
-    for exp_col in ("run_id", "neuroticism", "exec_time", "delay"):
-        if exp_col not in exec_time_data.columns:
-            raise ModelException(f"Base dataframe missing column {exp_col}.")
-
     data = exec_time_data.copy()
+
+    for col in ("run_id", "neuroticism", "exec_time", "ttf"):
+        if col not in data.columns:
+            raise ModelException(f"Base data missing required column: {col}")
+
     data["neuroticism_raw"] = data["neuroticism"]
     data["neuroticism"] = pd.cut(data["neuroticism"], pd.IntervalIndex(neuro_bins))
-    # data["impairment"] = pd.cut(data["delay"], pd.IntervalIndex(impair_bins))
 
     processed_dfs = deque()
     for run_id, df in data.groupby("run_id"):
         # df = df.copy()
         df = df.copy()
-        df["delay"] = df["delay"].shift()
+        df["ttf"] = df["ttf"].shift().fillna(0)
 
-        # assume that dealy """before""" first step is 0
-        df.iloc[0, df.columns.get_loc("delay")] = 0.0
-
-        df["impairment"] = pd.cut(df["delay"], pd.IntervalIndex(impair_bins))
+        df["impairment"] = pd.cut(df["ttf"], pd.IntervalIndex(impair_bins))
         df = df.rename(columns={"exec_time": "next_exec_time"})
 
         # df["next_exec_time"] = df["exec_time"].shift(-1)
@@ -112,7 +109,7 @@ def preprocess_data(
         df["duration"] = diff_imp_groups.cumcount() + 1
 
         def tag_transition(df: pd.DataFrame) -> pd.DataFrame:
-            # df is a chunk of the dataframe corresponding to a contiguos segment of
+            # df is a chunk of the dataframe corresponding to a contiguous segment of
             # steps with the same impairment
 
             result = pd.DataFrame(index=df.index, columns=["transition"])
@@ -147,7 +144,6 @@ def preprocess_data(
             + 1
         )
 
-        # df = df.drop(columns=["delay"])
         processed_dfs.append(df)
 
     data = pd.concat(processed_dfs, ignore_index=False)
@@ -200,14 +196,14 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         return self.get_execution_time()
 
     @abc.abstractmethod
-    def set_delay(self: TTimingModel, delay: float | int) -> TTimingModel:
+    def set_ttf(self: TTimingModel, ttf: float | int) -> TTimingModel:
         """
-        Update the internal delay of this model.
+        Update the internal TTF of this model.
 
         Parameters
         ----------
-        delay
-            A delay expressed in seconds.
+        ttf
+            Time-to-feedback of the previous step, expressed in seconds.
         """
         return self
 
@@ -310,7 +306,7 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
         super(NaiveExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
 
-    def set_delay(self: TTimingModel, delay: float | int) -> TTimingModel:
+    def set_ttf(self: TTimingModel, ttf: float | int) -> TTimingModel:
         # no-op
         return self
 
@@ -398,7 +394,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._seq = 1
         self._duration = 1
         self._binned_duration = None
-        self._delay = 0
+        self._ttf = 0
         self._impairment = None
         self._transition = Transition.NONE
         self.reset()
@@ -420,16 +416,16 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._binned_duration = self._duration_bins[
             self._duration_bins.contains(self._duration)
         ][0]
-        self._delay = 0
+        self._ttf = 0.0
         self._impairment = self._impairment_bins[
-            self._impairment_bins.contains(self._delay)
+            self._impairment_bins.contains(self._ttf)
         ][0]
         self._transition = Transition.NONE
 
-    def set_delay(self: TTimingModel, delay: float | int) -> TTimingModel:
+    def set_ttf(self: TTimingModel, ttf: float | int) -> TTimingModel:
         self._seq += 1
-        self._delay = delay
-        new_impairment = self._impairment_bins[self._impairment_bins.contains(delay)][0]
+        self._ttf = ttf
+        new_impairment = self._impairment_bins[self._impairment_bins.contains(ttf)][0]
 
         if new_impairment > self._impairment:
             self._transition = Transition.L2H
@@ -474,7 +470,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             "seq": self._seq,
             "neuroticism": self._neuro_binned,
             "neuroticism_raw": self._neuroticism,
-            "delay": self._delay,
+            "ttf": self._ttf,
             "impairment": self._impairment,
             "transition": self._transition.value,
             "duration": self._binned_duration,

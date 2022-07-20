@@ -42,7 +42,7 @@ class TestDataPreprocessing(TestCase):
                 "run_id": [1, 2, 3],
                 "neuroticism": [1, 2, 3],
                 "exec_time": [1, 2, 3],
-                "delay": [1, 2, 3],
+                "ttf": [1, 2, 3],
             }
         )
 
@@ -67,7 +67,7 @@ class TestDataPreprocessing(TestCase):
             {
                 "seq": np.arange(len(delays)) + 1,
                 "run_id": [0] * len(delays),
-                "delay": delays,
+                "ttf": delays,
                 "neuroticism": [0] * len(delays),
                 "exec_time": [0] * len(delays),
             }
@@ -103,7 +103,7 @@ class TestDataPreprocessing(TestCase):
             {
                 "seq": np.arange(len(delays)) + 1,
                 "run_id": [0] * len(delays),
-                "delay": delays,
+                "ttf": delays,
                 "neuroticism": [0] * len(delays),
                 "exec_time": [0] * len(delays),
             }
@@ -129,11 +129,11 @@ class TestModels(unittest.TestCase):
     def _test_model_states(
         self,
         model: ExecutionTimeModel,
-        delays: nptyping.NDArray,
+        ttfs: nptyping.NDArray,
         expected_states: Sequence[Dict[str, Any]],
     ):
         model.reset()
-        self.assertEqual(len(delays), len(expected_states))
+        self.assertEqual(len(ttfs), len(expected_states))
 
         # check initial state
         model_state = model.state_info()
@@ -143,8 +143,8 @@ class TestModels(unittest.TestCase):
         prev_state = model_state
 
         # iterate over the rest of the steps and match the states
-        for delay, state in zip(delays[:-1], expected_states[1:]):
-            model.set_delay(delay)
+        for ttf, state in zip(ttfs[:-1], expected_states[1:]):
+            model.set_ttf(ttf)
             model_state = model.state_info()
             self.assertEqual(state, model_state, prev_state)
             prev_state = model_state
@@ -160,11 +160,12 @@ class TestModels(unittest.TestCase):
                     transition_fade_distance=self.fade_distance,
                 )
 
-                delays = df.delay.to_numpy()
+                ttfs = df.ttf.to_numpy()
                 states = (
                     self.data[self.data.run_id == run_id]
                     .drop(columns=["next_exec_time", "run_id"])
-                    .to_dict("records")
+                    .copy()
                 )
 
-                self._test_model_states(model, delays, states)
+                states["seq"] = np.arange(1, len(states.index) + 1)
+                self._test_model_states(model, ttfs, states.to_dict("records"))

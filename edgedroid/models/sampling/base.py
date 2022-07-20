@@ -284,7 +284,7 @@ class BaseFrameSamplingModel(abc.ABC):
     def step_iterator(
         self,
         target_time: float,
-        delay: float,
+        ttf: float,
         infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         pass
@@ -294,7 +294,7 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
     def step_iterator(
         self,
         target_time: float,
-        delay: float,
+        ttf: float,
         infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         """
@@ -323,7 +323,7 @@ class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
     def step_iterator(
         self,
         target_time: float,
-        delay: float,
+        ttf: float,
         infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
@@ -354,7 +354,7 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
     def step_iterator(
         self,
         target_time: float,
-        delay: float,
+        ttf: float,
         infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
@@ -386,7 +386,7 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
     def step_iterator(
         self,
         target_time: float,
-        delay: float,
+        ttf: float,
         infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()

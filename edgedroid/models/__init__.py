@@ -79,7 +79,6 @@ class StepRecord:
     time_to_feedback: float  # difference between step duration and execution time
     wait_time: float  # time between execution time and when final sample is taken
     frame_count: int
-    delay: float  # previous step last_frame_rtt
 
     def to_dict(self) -> Dict[str, int | float]:
         return asdict(self)
@@ -179,7 +178,6 @@ class EdgeDroidModel:
             time_to_feedback=dt,
             wait_time=step_frame_timestamps[-1] - task_start_mono,
             frame_count=len(step_frame_timestamps),
-            delay=0,
         )
 
         self._step_records.append(step_record)
@@ -187,11 +185,8 @@ class EdgeDroidModel:
 
         for step_index in range(self.step_count):
             # get a step duration
-            # calculate delay between last submitted frame from previous step and
-            # ending of step (i.e. when feedback was received)
-            # delay = prev_step_end - step_frame_timestamps[-1]
-            delay = self._step_records[-1].last_frame_rtt
-            execution_time = self._timings.set_delay(delay).get_execution_time()
+            ttf = self._step_records[-1].time_to_feedback
+            execution_time = self._timings.set_ttf(ttf).get_execution_time()
 
             # clear the frame timestamp buffer
             step_frame_timestamps.clear()
@@ -202,7 +197,7 @@ class EdgeDroidModel:
                     self._frame_dists.step_iterator(
                         target_time=execution_time,
                         infinite=True,
-                        delay=delay,
+                        ttf=ttf,
                     )
                 ):
                     self._frame_count += 1
@@ -237,7 +232,6 @@ class EdgeDroidModel:
                 time_to_feedback=dt - execution_time,
                 wait_time=step_frame_timestamps[-1] - (prev_step_end + execution_time),
                 frame_count=len(step_frame_timestamps),
-                delay=delay,
             )
 
             self._step_records.append(step_record)
