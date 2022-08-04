@@ -245,7 +245,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         probabilities: pd.DataFrame,
         execution_time_model: ExecutionTimeModel,
         success_tag: str = "success",
-        init_network_time_guess_seconds: float = 1.0,  # based on exp data
+        init_network_time_guess_seconds: float = 0.3,  # based on exp data
         processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
         idle_factor: float = 4.0,
         busy_factor: float = 6.0,  # TODO: document, based on power consumption
@@ -321,7 +321,14 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             if instant > target_time:
                 # latest frame MUST have been a transition frame
                 # update mean rtt
-                self._current_rtt_mean = np.mean(step_rtts)
+                # NOTE! if step_rtts is empty, it means that the current step ONLY
+                # had a single sample.
+                # since we don't want to count the RTT of the success frames,
+                # we simply don't update the rtt mean in these cases
+
+                self._current_rtt_mean = (
+                    np.mean(step_rtts) if len(step_rtts) > 0 else self._current_rtt_mean
+                )
                 break
 
             # only add frame rtt to collection if it's not a transition frame
