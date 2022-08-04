@@ -257,6 +257,10 @@ def edgedroid_client(
                 )
                 logger.exception(e)
                 raise click.Abort()
+            except Exception as e:
+                # catch any other error and log it
+                logger.exception(e)
+                raise e
         else:
             # we only reach here if the code times out too many times!
             logger.critical("Reached maximum number of connection retries")

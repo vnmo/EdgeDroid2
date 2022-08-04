@@ -15,6 +15,7 @@ import pathlib
 from typing import Optional
 
 import click
+import loguru
 import yaml
 
 from .server import serve_LEGO_task
@@ -124,21 +125,25 @@ def edgedroid_server(
         server_output = None
 
     enable_logging(verbose, log_file=log_file)
-    serve_LEGO_task(
-        task=task_name,
-        port=bind_port,
-        bind_address=bind_address,
-        output_path=server_output,
-    )
-
-    if output_dir is not None:
-        with (output_dir / "server.metadata.yml").open("w") as fp:
-            yaml.safe_dump(
-                dict(
-                    bind_address=f"{bind_address}:{bind_port}",
-                    task=task_name,
-                ),
-                stream=fp,
-                explicit_start=True,
-                explicit_end=True,
-            )
+    try:
+        serve_LEGO_task(
+            task=task_name,
+            port=bind_port,
+            bind_address=bind_address,
+            output_path=server_output,
+        )
+    except Exception as e:
+        loguru.logger.exception(e)
+        raise e
+    finally:
+        if output_dir is not None:
+            with (output_dir / "server.metadata.yml").open("w") as fp:
+                yaml.safe_dump(
+                    dict(
+                        bind_address=f"{bind_address}:{bind_port}",
+                        task=task_name,
+                    ),
+                    stream=fp,
+                    explicit_start=True,
+                    explicit_end=True,
+                )
