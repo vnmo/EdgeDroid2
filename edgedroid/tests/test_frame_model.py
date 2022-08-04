@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 import unittest
+from collections import deque
 from importlib import resources
 
 import numpy as np
@@ -71,20 +72,33 @@ class TestFrameModel(unittest.TestCase):
             nptesting.assert_array_less(diff, self.comp_thresh)
 
 
-# class TestAdaptiveSampling(unittest.TestCase):
-#     def setUp(self) -> None:
-#         from . import resources as testres
-#
-#         arr_file = resources.files(testres).joinpath("adaptive_test_cases.npz")
-#         self.test_cases = np.load(arr_file)
-#
-#     def test_instant_generator(self):
-#         for _, test_arr in self.test_cases.items():
-#             sigma, alpha, beta, *samples = test_arr
-#             mu = sigma * np.sqrt(np.divide(np.pi, 2))
-#
-#             for test_sample, gen_sample in zip(
-#                 samples,
-#                 _aperiodic_instant_iterator(mu=mu, alpha=alpha, beta=beta),
-#             ):
-#                 nptesting.assert_allclose(test_sample, gen_sample)
+class TestAdaptiveSampling(unittest.TestCase):
+    def setUp(self) -> None:
+        sigmas = (4.8, 4.8, 4.8, 4.8)
+        alphas = (0.5, 0.5, 0.2, 1.0)
+        betas = (1.5, 1.0, 2.0, 5.0)
+
+        num_samples = 100
+
+        self._test_cases = deque()
+
+        for sigma, alpha, beta in zip(sigmas, alphas, betas):
+            self._test_cases.append(
+                (
+                    (sigma, alpha, beta),
+                    np.float_power(
+                        3 * sigma * np.sqrt(np.divide(alpha, 2 * beta)), np.divide(2, 3)
+                    )
+                    * np.float_power(np.arange(1, num_samples + 1), np.divide(2, 3)),
+                )
+            )
+
+    def test_instant_generator(self):
+        for (sigma, alpha, beta), samples in self._test_cases:
+            mu = sigma * np.sqrt(np.divide(np.pi, 2))
+
+            for test_sample, gen_sample in zip(
+                samples,
+                _aperiodic_instant_iterator(mu=mu, alpha=alpha, beta=beta),
+            ):
+                nptesting.assert_allclose(test_sample, gen_sample)
