@@ -194,19 +194,15 @@ Initializing EdgeDroid model with:
                         }
                     )
 
-                    if model_frame.frame_tag in ("success", "initial"):
-                        if transition:
-                            # if we receive a response for a success frame, advance the
-                            # model
-                            logger.success("Advancing to next step")
-                            break
-                        else:
-                            logger.error(
-                                "Received unexpected unsuccessful response from "
-                                "server, aborting"
-                            )
-                            raise click.Abort()
+                # when step iterator finishes, we should have reached a success frame!
+                if not transition:
+                    logger.error(
+                        "Expected step transition, "
+                        "but backend returned non-success response."
+                    )
+                    raise click.Abort()
 
+                logger.success("Advancing to next step")
                 dt = time.monotonic() - ti
                 fps = (frame_index + 1) / dt
                 logger.debug(f"Step performance: {fps:0.2f} FPS")

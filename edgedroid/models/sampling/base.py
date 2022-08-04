@@ -285,7 +285,7 @@ class BaseFrameSamplingModel(abc.ABC):
         self,
         target_time: float,
         ttf: float,
-        infinite: bool = False,
+        # infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         pass
 
@@ -295,7 +295,7 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
         self,
         target_time: float,
         ttf: float,
-        infinite: bool = False,
+        # infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         """
         An iterator over the frame tags in a step.
@@ -315,8 +315,8 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
         while True:
             instant = time.monotonic() - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
-            if instant > target_time and not infinite:
-                return
+            if instant > target_time:
+                break
 
 
 class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
@@ -324,15 +324,15 @@ class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
         self,
         target_time: float,
         ttf: float,
-        infinite: bool = False,
+        # infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
         while True:
             time.sleep(max(target_time - (time.monotonic() - step_start), 0))
             dt = time.monotonic() - step_start
             yield self.get_frame_at_instant(dt, target_time), dt
-            if dt > target_time and not infinite:
-                return
+            if dt > target_time:
+                break
 
 
 class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
@@ -355,15 +355,15 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
         self,
         target_time: float,
         ttf: float,
-        infinite: bool = False,
+        # infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
         step_start = time.monotonic()
         time.sleep(self._hold_time)
         while True:
             instant = time.monotonic() - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
-            if instant > target_time and not infinite:
-                return
+            if instant > target_time:
+                break
 
 
 class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
@@ -396,8 +396,8 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
             t_sample = time.monotonic()
             instant = t_sample - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
-            if instant > target_time and not infinite:
-                return
+            if instant > target_time:
+                break
 
             dt = time.monotonic() - t_sample
             time.sleep(max(0.0, self._interval - dt))

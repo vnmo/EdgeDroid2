@@ -249,7 +249,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
         idle_factor: float = 4.0,
         busy_factor: float = 6.0,  # TODO: document, based on power consumption
-        network_time_window: int = 10,
+        # network_time_window: int = 10,
     ):
         """
 
@@ -270,9 +270,9 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             Estimated idle power consumption of the client.
         busy_factor
             Estimated communication power consumption of the client.
-        network_time_window
-            Size of the network time window, in number of samples, used to calculate
-            the average network time at each step.
+        # network_time_window
+        #     Size of the network time window, in number of samples, used to calculate
+        #     the average network time at each step.
         """
         super(AperiodicFrameSamplingModel, self).__init__(
             probabilities=probabilities,
@@ -281,7 +281,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         )
 
         self._initial_nt_guess = init_network_time_guess_seconds
-        self._network_times = deque(maxlen=network_time_window)
+        self._network_times = deque()
 
         self._idle_factor = idle_factor
         self._busy_factor = busy_factor
@@ -292,7 +292,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         self,
         target_time: float,
         ttf: float,
-        infinite: bool = False,
+        # infinite: bool = False,
     ) -> Iterator[Tuple[str, float]]:
 
         step_start = time.monotonic()
@@ -316,5 +316,9 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
 
             self._network_times.append(max(dt - self._processing_time, 0.0))
 
-            if instant > target_time and not infinite:
-                return
+            # TODO: exclude transition frame RTT -> already excluded by design
+            # TODO: include all RTTs from previous step
+            # TODO: tweak idle factor?
+
+            if instant > target_time:
+                break

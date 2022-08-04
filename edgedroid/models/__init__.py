@@ -148,18 +148,17 @@ class EdgeDroidModel:
         step_frame_timestamps = deque()
 
         def _init_iter() -> Iterator[ModelFrame]:
-            while True:
-                self._frame_count += 1
-                step_frame_timestamps.append(time.monotonic())
-                yield ModelFrame(
-                    seq=self._frame_count,
-                    step_seq=1,
-                    step_index=-1,
-                    step_target_time=0,
-                    step_frame_time=0,
-                    frame_tag="initial",
-                    frame_data=self._frames.get_initial_frame(),
-                )
+            self._frame_count += 1
+            step_frame_timestamps.append(time.monotonic())
+            yield ModelFrame(
+                seq=self._frame_count,
+                step_seq=1,
+                step_index=-1,
+                step_target_time=0,
+                step_frame_time=0,
+                frame_tag="initial",
+                frame_data=self._frames.get_initial_frame(),
+            )
 
         yield _init_iter()
         dt = time.monotonic() - prev_step_end
@@ -196,7 +195,7 @@ class EdgeDroidModel:
                 for seq, (frame_tag, instant) in enumerate(
                     self._frame_dists.step_iterator(
                         target_time=execution_time,
-                        infinite=True,
+                        # infinite=True,
                         ttf=ttf,
                     )
                 ):
