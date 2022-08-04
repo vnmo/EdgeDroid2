@@ -280,8 +280,9 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             success_tag=success_tag,
         )
 
-        self._initial_nt_guess = init_network_time_guess_seconds
-        self._network_times = deque()
+        # self._initial_nt_guess = init_network_time_guess_seconds
+        # self._network_times = deque()
+        self._current_rtt_mean = init_network_time_guess_seconds
 
         self._idle_factor = idle_factor
         self._busy_factor = busy_factor
@@ -296,17 +297,18 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     ) -> Iterator[Tuple[str, float]]:
 
         step_start = time.monotonic()
+        step_rtts = deque()
 
-        Tc = (
-            np.mean(self._network_times)
-            if len(self._network_times) > 0
-            else self._initial_nt_guess
-        )
+        # Tc = (
+        #     np.mean(self._network_times)
+        #     if len(self._network_times) > 0
+        #     else self._initial_nt_guess
+        # )
         self._timing_model.set_ttf(ttf)
 
         for target_instant in _aperiodic_instant_iterator(
             mu=self._timing_model.get_expected_execution_time(),
-            alpha=Tc * (self._busy_factor - self._idle_factor),
+            alpha=self._current_rtt_mean * (self._busy_factor - self._idle_factor),
             beta=self._idle_factor,
         ):
             time.sleep(max(0.0, target_instant - (time.monotonic() - step_start)))
@@ -314,11 +316,13 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             yield self.get_frame_at_instant(instant, target_time), instant
             dt = time.monotonic() - tsend
 
-            self._network_times.append(max(dt - self._processing_time, 0.0))
-
-            # TODO: exclude transition frame RTT -> already excluded by design
-            # TODO: include all RTTs from previous step
             # TODO: tweak idle factor?
 
             if instant > target_time:
+                # latest frame MUST have been a transition frame
+                # update mean rtt
+                self._current_rtt_mean = np.mean(step_rtts)
                 break
+
+            # only add frame rtt to collection if it's not a transition frame
+            step_rtts.append(max(dt - self._processing_time, 0.0))

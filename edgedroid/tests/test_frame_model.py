@@ -13,6 +13,7 @@
 #  limitations under the License.
 
 import unittest
+from importlib import resources
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from numpy import testing as nptesting
 
 from ..models import ZeroWaitFrameSamplingModel
 from ..data import load_default_frame_probabilities
+from ..models.sampling.adaptive import _aperiodic_instant_iterator
 
 
 class TestFrameModel(unittest.TestCase):
@@ -67,3 +69,22 @@ class TestFrameModel(unittest.TestCase):
             results = results / results.sum()
             diff = (results - bin_probs).abs()
             nptesting.assert_array_less(diff, self.comp_thresh)
+
+
+# class TestAdaptiveSampling(unittest.TestCase):
+#     def setUp(self) -> None:
+#         from . import resources as testres
+#
+#         arr_file = resources.files(testres).joinpath("adaptive_test_cases.npz")
+#         self.test_cases = np.load(arr_file)
+#
+#     def test_instant_generator(self):
+#         for _, test_arr in self.test_cases.items():
+#             sigma, alpha, beta, *samples = test_arr
+#             mu = sigma * np.sqrt(np.divide(np.pi, 2))
+#
+#             for test_sample, gen_sample in zip(
+#                 samples,
+#                 _aperiodic_instant_iterator(mu=mu, alpha=alpha, beta=beta),
+#             ):
+#                 nptesting.assert_allclose(test_sample, gen_sample)
