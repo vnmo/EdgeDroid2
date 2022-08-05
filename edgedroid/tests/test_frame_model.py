@@ -74,9 +74,9 @@ class TestFrameModel(unittest.TestCase):
 
 class TestAdaptiveSampling(unittest.TestCase):
     def setUp(self) -> None:
-        sigmas = (4.8, 4.8, 4.8, 4.8)
-        alphas = (0.5, 0.5, 0.2, 1.0)
-        betas = (1.5, 1.0, 2.0, 5.0)
+        sigmas = (4.8, 4.8, 4.8, 4.8, 5.0, 4.8, 4.8)
+        alphas = (0.5, 0.5, 0.2, 1.0, 0.1, 0.03, 0.0)
+        betas = (1.5, 1.0, 2.0, 5.0, 1.0, 1.0, 1.0)
 
         num_samples = 100
 

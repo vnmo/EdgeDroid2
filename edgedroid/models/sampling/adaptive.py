@@ -247,9 +247,9 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         success_tag: str = "success",
         init_network_time_guess_seconds: float = 0.3,  # based on exp data
         processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
-        idle_factor: float = 4.0,
-        busy_factor: float = 6.0,  # TODO: document, based on power consumption
-        # network_time_window: int = 10,
+        # idle_factor: float = 4.0,
+        # busy_factor: float = 6.0,  # TODO: document, based on power consumption
+        step_delay_cost_window: int = 5,
     ):
         """
 
@@ -266,10 +266,10 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         processing_time_seconds
             Factor, expressed in seconds, that is subtracted from frame round-trip
             times, representing the time processing took on the backend.
-        idle_factor
-            Estimated idle power consumption of the client.
-        busy_factor
-            Estimated communication power consumption of the client.
+        # idle_factor
+        #     Estimated idle power consumption of the client.
+        # busy_factor
+        #     Estimated communication power consumption of the client.
         # network_time_window
         #     Size of the network time window, in number of samples, used to calculate
         #     the average network time at each step.
@@ -282,10 +282,13 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
 
         # self._initial_nt_guess = init_network_time_guess_seconds
         # self._network_times = deque()
-        self._current_rtt_mean = init_network_time_guess_seconds
+        self._delay_costs = deque(
+            [init_network_time_guess_seconds],
+            maxlen=step_delay_cost_window,
+        )
 
-        self._idle_factor = idle_factor
-        self._busy_factor = busy_factor
+        # self._idle_factor = idle_factor
+        # self._busy_factor = busy_factor
 
         self._processing_time = processing_time_seconds
 
@@ -297,7 +300,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     ) -> Iterator[Tuple[str, float]]:
 
         step_start = time.monotonic()
-        step_rtts = deque()
+        # step_rtts = deque()
 
         # Tc = (
         #     np.mean(self._network_times)
@@ -306,30 +309,35 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # )
         self._timing_model.set_ttf(ttf)
 
-        for target_instant in _aperiodic_instant_iterator(
-            mu=self._timing_model.get_expected_execution_time(),
-            alpha=self._current_rtt_mean * (self._busy_factor - self._idle_factor),
-            beta=self._idle_factor,
+        beta = 1.0
+        alpha = float(np.mean(self._delay_costs))
+
+        for i, target_instant in enumerate(
+            _aperiodic_instant_iterator(
+                mu=self._timing_model.get_expected_execution_time(),
+                alpha=alpha,
+                beta=beta,
+                # alpha=self._current_rtt_mean *
+                # (self._busy_factor - self._idle_factor),
+                # beta=self._idle_factor,
+            )
         ):
             time.sleep(max(0.0, target_instant - (time.monotonic() - step_start)))
             instant = (tsend := time.monotonic()) - step_start
             yield self.get_frame_at_instant(instant, target_time), instant
             dt = time.monotonic() - tsend
 
-            # TODO: tweak idle factor?
-
             if instant > target_time:
-                # latest frame MUST have been a transition frame
-                # update mean rtt
-                # NOTE! if step_rtts is empty, it means that the current step ONLY
-                # had a single sample.
-                # since we don't want to count the RTT of the success frames,
-                # we simply don't update the rtt mean in these cases
-
-                self._current_rtt_mean = (
-                    np.mean(step_rtts) if len(step_rtts) > 0 else self._current_rtt_mean
+                num_samples = i + 1
+                self._delay_costs.append(
+                    max(dt - self._processing_time, 0.0) / num_samples
                 )
+
+                # self._current_rtt_mean = (
+                #     np.mean(step_rtts) if len(step_rtts) > 0 else self._
+                #     current_rtt_mean
+                # )
                 break
 
             # only add frame rtt to collection if it's not a transition frame
-            step_rtts.append(max(dt - self._processing_time, 0.0))
+            # step_rtts.append(max(dt - self._processing_time, 0.0))
