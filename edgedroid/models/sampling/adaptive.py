@@ -309,7 +309,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # )
         self._timing_model.set_ttf(ttf)
 
-        beta = 1.0
+        beta = 2.0  # 1.0, trying something,
         alpha = float(np.mean(self._delay_costs))
 
         for i, target_instant in enumerate(
