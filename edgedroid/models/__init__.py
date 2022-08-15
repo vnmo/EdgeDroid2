@@ -67,6 +67,7 @@ class ModelFrame:
 @dataclass(frozen=True, eq=True)
 class StepRecord:
     step_number: int
+    impairment_score: float
     step_start: float
     step_start_monotonic: float
     step_end: float
@@ -165,6 +166,7 @@ class EdgeDroidModel:
 
         step_record = StepRecord(
             step_number=0,
+            impairment_score=0.0,
             step_start=task_start,
             step_start_monotonic=prev_step_end,
             step_end=task_start + dt,
@@ -219,6 +221,7 @@ class EdgeDroidModel:
             # TODO: this is a lot of processing... push to another process?
             step_record = StepRecord(
                 step_number=step_index + 1,
+                impairment_score=self._timings.get_impairment_score(),
                 step_start=step_start,
                 step_start_monotonic=prev_step_end,
                 step_end=step_start + dt,
