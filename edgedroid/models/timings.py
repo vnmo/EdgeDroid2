@@ -196,9 +196,9 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         return self.get_execution_time()
 
     @abc.abstractmethod
-    def set_ttf(self: TTimingModel, ttf: float | int) -> TTimingModel:
+    def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
         """
-        Update the internal TTF of this model.
+        Update the internal TTF of this model and advance the internal state.
 
         Parameters
         ----------
@@ -206,6 +206,21 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
             Time-to-feedback of the previous step, expressed in seconds.
         """
         return self
+
+    @abc.abstractmethod
+    def get_impairment_score(self) -> float:
+        """
+        Returns
+        -------
+        float
+            A normalized "impairment" score for this model, where 0 corresponds to
+            completely unimpaired and 1.0 to completely impaired.
+
+            This score is derived from the maximum and minimum mean execution times
+            this model can produce. The mean of the current state is then normalized
+            against these values to produce the score.
+        """
+        pass
 
     @abc.abstractmethod
     def get_execution_time(self) -> float:
@@ -306,9 +321,12 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
         super(NaiveExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
 
-    def set_ttf(self: TTimingModel, ttf: float | int) -> TTimingModel:
+    def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
         # no-op
         return self
+
+    def get_impairment_score(self) -> float:
+        return 0.0
 
     def get_execution_time(self) -> float:
         return self._exec_time
@@ -381,6 +399,17 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             # .apply(lambda x: x.dropna().to_numpy()).to_dict()
         )
 
+        # calculate imp score range
+        _min_exec_time_mean = np.inf
+        _max_exec_time_mean = -np.inf
+        for _, exec_times in self._data_views.items():
+            current_mean = exec_times.mean()
+            _min_exec_time_mean = np.min((_min_exec_time_mean, current_mean))
+            _max_exec_time_mean = np.max((_max_exec_time_mean, current_mean))
+
+        self._max_score = _max_exec_time_mean - _min_exec_time_mean
+        self._score_offset = _min_exec_time_mean
+
         # unique bins (interval arrays)
         self._duration_bins = data["duration"].unique()
         self._impairment_bins = data["impairment"].unique()
@@ -391,12 +420,11 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             if transition_fade_distance is not None
             else float("inf")
         )
-        self._seq = 1
-        self._duration = 1
-        self._binned_duration = None
-        self._ttf = 0
-        self._impairment = None
-        self._transition = Transition.NONE
+
+        self._imp_memory = deque()
+        self._seq = 0
+        self._ttf = 0.0
+        self._transition = None
         self.reset()
 
         # random state
@@ -411,52 +439,57 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def reset(self) -> None:
         # initial state
-        self._seq = 1
-        self._duration = 1
-        self._binned_duration = self._duration_bins[
-            self._duration_bins.contains(self._duration)
-        ][0]
+        self._imp_memory.clear()
+        self._seq = 0
         self._ttf = 0.0
-        self._impairment = self._impairment_bins[
-            self._impairment_bins.contains(self._ttf)
-        ][0]
-        self._transition = Transition.NONE
+        self._transition = None
 
-    def set_ttf(self: TTimingModel, ttf: float | int) -> TTimingModel:
-        self._seq += 1
+    def advance(self, ttf: float | int) -> TTimingModel:
         self._ttf = ttf
-        new_impairment = self._impairment_bins[self._impairment_bins.contains(ttf)][0]
+        new_imp = self._impairment_bins[self._impairment_bins.contains(ttf)][0]
 
-        if new_impairment > self._impairment:
+        if len(self._imp_memory) < 1:
+            # not enough steps to calculate a transition
+            # must be first step
+            self._seq = 0
+            self._transition = Transition.NONE
+        elif self._imp_memory[-1] < new_imp:
+            self._imp_memory.clear()
             self._transition = Transition.L2H
-            self._duration = 1
-        elif new_impairment < self._impairment:
+        elif self._imp_memory[-1] > new_imp:
+            self._imp_memory.clear()
             self._transition = Transition.H2L
-            self._duration = 1
         elif (
-            self._duration + 1 > self._fade_distance
+            len(self._imp_memory) + 1 > self._fade_distance
             and self._transition != Transition.NONE
         ):
-            self._duration = 1
+            self._imp_memory.clear()
             self._transition = Transition.NONE
-        else:
-            self._duration += 1
 
-        self._binned_duration = self._duration_bins[
-            self._duration_bins.contains(self._duration)
-        ][0]
-        self._impairment = new_impairment
+        self._seq += 1
+        self._imp_memory.append(new_imp)
+        # self._binned_duration = self._duration_bins[
+        #     self._duration_bins.contains(self._duration)
+        # ][0]
 
         return self
 
     def _get_data_for_current_state(self) -> npt.NDArray:
         # get the appropriate data view
+        binned_duration = self._duration_bins[
+            self._duration_bins.contains(len(self._imp_memory))
+        ][0]
+
         try:
             return self._data_views[
-                (self._impairment, self._binned_duration, self._transition.value)
+                (self._imp_memory[-1], binned_duration, self._transition.value)
             ]
         except KeyError:
-            raise ModelException(f"No data for model state: {self.state_info()}!")
+            raise ModelException(
+                f"No data for model state: {self.state_info()}! "
+                f"Perhaps you forgot to advance() this model after "
+                f"initialization?"
+            )
 
     def get_execution_time(self) -> float:
         # sample from the data and return an execution time in seconds
@@ -465,23 +498,32 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self._get_data_for_current_state().mean()
 
+    def get_impairment_score(self) -> float:
+        current_mean = self._get_data_for_current_state().mean()
+        return (current_mean - self._score_offset) / self._max_score
+
     def state_info(self) -> Dict[str, Any]:
-        return {
-            "seq": self._seq,
-            "neuroticism": self._neuro_binned,
-            "neuroticism_raw": self._neuroticism,
-            "ttf": self._ttf,
-            "impairment": self._impairment,
-            "transition": self._transition.value,
-            "duration": self._binned_duration,
-            "duration_raw": self._duration
-            # "model neuroticism": self._neuroticism,
-            # "model neuroticism (binned)": self._neuro_binned,
-            # "latest impairment": self._impairment,
-            # "latest transition": self._transition.value,
-            # "current duration": self._duration,
-            # "current duration (binned)": self._binned_duration,
-        }
+        try:
+            binned_duration = self._duration_bins[
+                self._duration_bins.contains(len(self._imp_memory))
+            ][0]
+
+            return {
+                "seq": self._seq,
+                "neuroticism": self._neuro_binned,
+                "neuroticism_raw": self._neuroticism,
+                "ttf": self._ttf,
+                "impairment": self._imp_memory[-1],
+                "transition": self._transition.value,
+                "duration": binned_duration,
+                "duration_raw": len(self._imp_memory),
+            }
+        except Exception as e:
+            raise ModelException(
+                f"Invalid model state. "
+                f"Perhaps you forgot to advance() this model after "
+                f"initialization?"
+            ) from e
 
 
 class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
@@ -525,14 +567,33 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             k, loc, scale = distribution.fit(exec_times)
             self._dists[imp_dur_trans] = distribution.freeze(loc=loc, scale=scale, K=k)
 
+        # calculate imp score range, based on distributions
+        _min_exec_time_mean = np.inf
+        _max_exec_time_mean = -np.inf
+        for _, dist in self._dists.items():
+            current_mean = dist.mean()
+            _min_exec_time_mean = np.min((_min_exec_time_mean, current_mean))
+            _max_exec_time_mean = np.max((_max_exec_time_mean, current_mean))
+
+        self._max_score = _max_exec_time_mean - _min_exec_time_mean
+        self._score_offset = _min_exec_time_mean
+
     def _get_dist_for_current_state(self) -> stats.rv_continuous:
         # get the appropriate distribution
+        binned_duration = self._duration_bins[
+            self._duration_bins.contains(len(self._imp_memory))
+        ][0]
+
         try:
             return self._dists[
-                (self._impairment, self._binned_duration, self._transition.value)
+                (self._imp_memory[-1], binned_duration, self._transition.value)
             ]
         except KeyError:
-            raise ModelException(f"No data for model state: {self.state_info()}!")
+            raise ModelException(
+                f"No data for model state: {self.state_info()}! "
+                f"Perhaps you forgot to advance() this model after "
+                f"initialization?"
+            )
 
     def get_execution_time(self) -> float:
         # sample from the dist and return an execution time in seconds
@@ -542,3 +603,7 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
 
     def get_expected_execution_time(self) -> float:
         return self._get_dist_for_current_state().mean()
+
+    def get_impairment_score(self) -> float:
+        current_mean = self._get_dist_for_current_state().mean()
+        return (current_mean - self._score_offset) / self._max_score

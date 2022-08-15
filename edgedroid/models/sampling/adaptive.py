@@ -307,7 +307,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         #     if len(self._network_times) > 0
         #     else self._initial_nt_guess
         # )
-        self._timing_model.set_ttf(ttf)
+        self._timing_model.advance(ttf)
 
         beta = 1.0
         alpha = float(np.mean(self._delay_costs))

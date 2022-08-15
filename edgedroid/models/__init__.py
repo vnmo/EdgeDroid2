@@ -185,7 +185,7 @@ class EdgeDroidModel:
         for step_index in range(self.step_count):
             # get a step duration
             ttf = self._step_records[-1].time_to_feedback
-            execution_time = self._timings.set_ttf(ttf).get_execution_time()
+            execution_time = self._timings.advance(ttf).get_execution_time()
 
             # clear the frame timestamp buffer
             step_frame_timestamps.clear()

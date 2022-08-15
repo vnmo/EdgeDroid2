@@ -119,7 +119,7 @@ class TestDataPreprocessing(TestCase):
 
 class TestModels(unittest.TestCase):
     def setUp(self) -> None:
-        self.fade_distance = 4
+        self.fade_distance = 8
         raw_data_params = load_default_exec_time_data()
         self.data = preprocess_data(
             *raw_data_params, transition_fade_distance=self.fade_distance
@@ -136,23 +136,25 @@ class TestModels(unittest.TestCase):
         self.assertEqual(len(ttfs), len(expected_states))
 
         # check initial state
-        model_state = model.state_info()
+        # this should fail
+        with self.assertRaises(ModelException):
+            model_state = model.state_info()
 
         # see https://stackoverflow.com/a/59777678
-        self.assertEqual(expected_states[0], model_state)
-        prev_state = model_state
+        # self.assertEqual(expected_states[0], model_state)
+        prev_state = None
 
         # iterate over the rest of the steps and match the states
-        for ttf, state in zip(ttfs[:-1], expected_states[1:]):
-            model.set_ttf(ttf)
+        for ttf, state in zip(ttfs, expected_states):
+            model.advance(ttf)
             model_state = model.state_info()
             self.assertEqual(state, model_state, prev_state)
             prev_state = model_state
 
     def test_states_step_by_step(self):
         for mcls in tqdm((EmpiricalExecutionTimeModel, TheoreticalExecutionTimeModel)):
-            for run_id, df in tqdm(self.raw_data.groupby("run_id")):
-                neuro = df.iloc[0]["neuroticism"]
+            for run_id, raw_df in tqdm(self.raw_data.groupby("run_id")):
+                neuro = raw_df.iloc[0]["neuroticism"]
 
                 model = mcls(
                     self.data,
@@ -160,7 +162,7 @@ class TestModels(unittest.TestCase):
                     transition_fade_distance=self.fade_distance,
                 )
 
-                ttfs = df.ttf.to_numpy()
+                ttfs = raw_df.ttf.shift().fillna(0).to_numpy()
                 states = (
                     self.data[self.data.run_id == run_id]
                     .drop(columns=["next_exec_time", "run_id"])
