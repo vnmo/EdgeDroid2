@@ -19,7 +19,7 @@ import socket
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
-from typing import Callable, Dict, Iterator, Tuple
+from typing import Callable, Dict, Iterator, Optional, Tuple
 
 import pandas as pd
 from gabriel_lego import FrameResult, LEGOTask
@@ -47,11 +47,12 @@ def server(
     task_name: str,
     sock: socket.SocketType,
     result_cb: Callable[[FrameResult], None] = lambda _: None,
+    truncate: Optional[int] = None,
 ) -> pd.DataFrame:
-    logger.info(f"Starting LEGO task '{task_name}'")
+    logger.info(f"Starting LEGO task trace '{task_name}'")
     records = deque()
 
-    task = LEGOTask(e_data.load_default_task(task_name))
+    task = LEGOTask(e_data.load_default_task(task_name, truncate=truncate))
 
     with contextlib.closing(frame_stream_unpack(sock)) as frame_stream:
         for seq, image_data in frame_stream:
@@ -115,10 +116,11 @@ def accept_context(
 
 
 def serve_LEGO_task(
-    task: str,
+    task_name: str,
     port: int,
     output_path: pathlib.Path,
     bind_address: str = "0.0.0.0",
+    truncate: Optional[int] = None,
 ) -> None:
     with contextlib.ExitStack() as stack:
         # enter context
@@ -128,11 +130,13 @@ def serve_LEGO_task(
             )
         )
 
-        logger.info(f"Serving LEGO task {task} on {bind_address}:{port}/tcp")
+        logger.info(f"Serving LEGO task {task_name} on {bind_address}:{port}/tcp")
+        if truncate is not None:
+            logger.info(f"Task is truncated to {truncate} steps")
         # logger.debug(f"One-shot mode: {'on' if one_shot else 'off'}")
         try:
             with accept_context(server_sock) as (conn, _):
-                server(task, conn).to_csv(output_path)
+                server(task_name, conn, truncate=truncate).to_csv(output_path)
         except KeyboardInterrupt:
             logger.warning("Got keyboard interrupt, aborting")
             logger.warning("Shutting down!")

@@ -37,31 +37,19 @@ from ..common_cli import enable_logging
     envvar="EDGEDROID_SERVER_BIND_PORT",
 )
 @click.argument(
-    "task-name",
+    "task",
     type=str,
-    envvar="EDGEDROID_SERVER_TASK_NAME",
+    envvar="EDGEDROID_SERVER_TRACE",
 )
-# @click.option(
-#     "--one-shot/--multi-run",
-#     is_flag=True,
-#     default=True,
-#     show_default=True,
-#     help="Serve a single client and then exit, or stay listening for multiple runs.",
-# )
-# @click.option(
-#     "-o",
-#     "--output",
-#     type=click.Path(
-#         file_okay=True,
-#         dir_okay=False,
-#         writable=True,
-#         resolve_path=True,
-#         path_type=pathlib.Path,
-#     ),
-#     default="./server_records.csv",
-#     show_default=True,
-#     help="Specifies a path on which to output processed frame metrics in CSV format.",
-# )
+@click.option(
+    "--truncate",
+    type=int,
+    default=None,
+    help="Truncate the specified task trace to a given number of steps. "
+    "Note that the client needs to be configured with the same value for the "
+    "emulation to work.",
+    show_default=True,
+)
 @click.option(
     "-o",
     "--output-dir",
@@ -85,23 +73,11 @@ from ..common_cli import enable_logging
     help="Enable verbose logging.",
     show_default=True,
 )
-# @click.option(
-#     "--log-file",
-#     type=click.Path(
-#         file_okay=True,
-#         dir_okay=False,
-#         writable=True,
-#         resolve_path=True,
-#         path_type=pathlib.Path,
-#     ),
-#     default=None,
-#     show_default=True,
-#     help="Save a copy of the logs to a file.",
-# )
 def edgedroid_server(
     bind_address: str,
     bind_port: int,
-    task_name: str,
+    task: str,
+    truncate: Optional[int],
     # one_shot: bool,
     verbose: bool,
     output_dir: Optional[pathlib.Path],
@@ -127,10 +103,11 @@ def edgedroid_server(
     enable_logging(verbose, log_file=log_file)
     try:
         serve_LEGO_task(
-            task=task_name,
+            task_name=task,
             port=bind_port,
             bind_address=bind_address,
             output_path=server_output,
+            truncate=truncate,
         )
     except Exception as e:
         loguru.logger.exception(e)
@@ -141,7 +118,7 @@ def edgedroid_server(
                 yaml.safe_dump(
                     dict(
                         bind_address=f"{bind_address}:{bind_port}",
-                        task=task_name,
+                        task=task,
                     ),
                     stream=fp,
                     explicit_start=True,

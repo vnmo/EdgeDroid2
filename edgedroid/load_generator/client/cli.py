@@ -38,6 +38,15 @@ from ..common_cli import enable_logging
     type=click.IntRange(0, 65535),
     envvar="EDGEDROID_CLIENT_PORT",
 )
+@click.argument(
+    "trace",
+    type=str,
+    envvar="EDGEDROID_CLIENT_TRACE",
+    # default="square00",
+    # show_default=True,
+    # help="Name of the task trace to use for emulation.",
+    # TODO: list traces? in tools!
+)
 @click.option(
     "-n",
     "--neuroticism",
@@ -47,12 +56,13 @@ from ..common_cli import enable_logging
     help="Normalized neuroticism value for the model.",
 )
 @click.option(
-    "-t",
-    "--task",
-    type=str,
-    default="square00",
+    "--truncate",
+    type=int,
+    default=None,
+    help="Truncate the specified task trace to a given number of steps. "
+    "Note that the server needs to be configured with the same value for the "
+    "emulation to work.",
     show_default=True,
-    help="Name of the task to use for emulation.",
 )
 @click.option(
     "-f",
@@ -86,18 +96,6 @@ from ..common_cli import enable_logging
     show_default=True,
     help="[zero-wait|ideal|regular-<seconds>|hold-<seconds>|adaptive-aperiodic]",
 )
-# @click.option(
-#     "--hold-time-seconds",
-#     type=click.FloatRange(min=0, min_open=False),
-#     default=None,
-#     show_default=False,
-# )
-# @click.option(
-#     "--sampling-interval-seconds",
-#     type=click.FloatRange(min=0, min_open=False),
-#     default=None,
-#     show_default=False,
-# )
 @click.option(
     "-o",
     "--output-dir",
@@ -112,32 +110,6 @@ from ..common_cli import enable_logging
     default=None,
     show_default=True,
 )
-# @click.option(
-#     "--step-records-output",
-#     type=click.Path(
-#         file_okay=True,
-#         dir_okay=False,
-#         writable=True,
-#         resolve_path=True,
-#         path_type=pathlib.Path,
-#     ),
-#     default=None,
-#     show_default=True,
-#     help="Specifies a path on which to output step metrics in CSV format.",
-# )
-# @click.option(
-#     "--frame-records-output",
-#     type=click.Path(
-#         file_okay=True,
-#         dir_okay=False,
-#         writable=True,
-#         resolve_path=True,
-#         path_type=pathlib.Path,
-#     ),
-#     default=None,
-#     show_default=True,
-#     help="Specifies a path on which to output frame metrics in CSV format.",
-# )
 @click.option(
     "-v",
     "--verbose",
@@ -164,24 +136,12 @@ from ..common_cli import enable_logging
     help="Maximum connection retries, set to a 0 or a "
     "negative value for infinite retries.",
 )
-# @click.option(
-#     "--log-file",
-#     type=click.Path(
-#         file_okay=True,
-#         dir_okay=False,
-#         writable=True,
-#         resolve_path=True,
-#         path_type=pathlib.Path,
-#     ),
-#     default=None,
-#     show_default=True,
-#     help="Save a copy of the logs to a file.",
-# )
 def edgedroid_client(
     host: str,
     port: int,
     neuroticism: float,
-    task: str,
+    trace: str,
+    truncate: Optional[int],
     fade_distance: int,
     timing_model: Literal["empirical", "theoretical", "naive"],
     sampling_strategy: str,
@@ -214,10 +174,11 @@ def edgedroid_client(
 
     emulation = StreamSocketEmulation(
         neuroticism=neuroticism,
-        trace=task,
+        trace=trace,
         fade_distance=fade_distance,
         model=timing_model,
         sampling=sampling_strategy,
+        truncate=truncate,
     )
 
     logger.info(f"Connecting to remote server at {host}:{port}/tcp")
@@ -286,7 +247,7 @@ def edgedroid_client(
                     dict(
                         host=f"{host}:{port}",
                         neuroticism=neuroticism,
-                        task=task,
+                        task=trace,
                         fade_distance=fade_distance,
                         timing_model=timing_model,
                         sampling_strategy=sampling_strategy,

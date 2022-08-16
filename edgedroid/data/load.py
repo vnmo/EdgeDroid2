@@ -14,7 +14,7 @@
 
 from importlib import resources
 from importlib.resources import as_file
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -85,7 +85,7 @@ def load_default_frame_probabilities() -> pd.DataFrame:
         return pd.read_csv(fp)
 
 
-def load_default_trace(trace_name: str) -> FrameSet:
+def load_default_trace(trace_name: str, truncate: Optional[int] = None) -> FrameSet:
     logger.debug(
         f"Loading default trace '{trace_name}' "
         f"with known hash {_default_traces[trace_name]}"
@@ -101,14 +101,35 @@ def load_default_trace(trace_name: str) -> FrameSet:
         url=trace_url, known_hash=_default_traces[trace_name], progressbar=True
     )
 
-    return FrameSet.from_datafile(task_name=trace_name, trace_path=trace_path)
+    return FrameSet.from_datafile(
+        task_name=trace_name,
+        trace_path=trace_path,
+        truncate=truncate,
+    )
 
 
-def load_default_task(task_name: str) -> List[npt.NDArray[int]]:
+class TaskLoadException(Exception):
+    pass
+
+
+def load_default_task(
+    task_name: str,
+    truncate: Optional[int] = None,
+) -> List[npt.NDArray[int]]:
     from . import resources as edgedroid_resources
 
     state_file = resources.files(edgedroid_resources).joinpath(f"{task_name}.npz")
     with as_file(state_file) as fp:
         states = np.load(str(fp))
 
-    return [states[str(i)] for i in range(len(states))]
+    num_states = len(states)
+    if truncate is not None:
+        if len(states) < truncate:
+            raise TaskLoadException(
+                f"Task has {num_states} steps, which is less than the desired "
+                f"truncated length of {truncate} steps."
+            )
+
+        num_states = truncate
+
+    return [states[str(i)] for i in range(num_states)]

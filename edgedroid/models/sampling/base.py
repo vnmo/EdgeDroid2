@@ -18,12 +18,16 @@ import abc
 import time
 from collections import deque
 from os import PathLike
-from typing import Any, Dict, Iterator, Sequence, Tuple
+from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import yaml
+
+
+class TraceException(Exception):
+    pass
 
 
 class FrameSet:
@@ -109,7 +113,12 @@ class FrameSet:
         return self._steps[step_index][frame_tag].copy()
 
     @classmethod
-    def from_datafile(cls, task_name: str, trace_path: PathLike | str) -> FrameSet:
+    def from_datafile(
+        cls,
+        task_name: str,
+        trace_path: PathLike | str,
+        truncate: Optional[int] = None,
+    ) -> FrameSet:
         """
         Opens a frame tracefile and parses it.
 
@@ -130,6 +139,9 @@ class FrameSet:
             Task name for this trace.
         trace_path
             Path to the datafile.
+        truncate
+            Shorten the trace to a specified number of steps.
+            Raises an exception if the trace has fewer steps than the given number.
 
         Returns
         -------
@@ -145,7 +157,21 @@ class FrameSet:
         #  blank (repeat is simply the previous success)). Maybe we should add a way
         #  of configuring that.
         assert (len(data) - 1) % 3 == 0
+
+        # truncate to the given number of steps
         num_steps = (len(data) - 1) // 3
+
+        if truncate is not None:
+            if num_steps < truncate:
+                raise TraceException(
+                    f"Trace {task_name} ({trace_path}) has {num_steps} "
+                    f"steps, which is less than the desired truncated "
+                    f"length of {truncate} steps."
+                )
+
+            # data_len = (truncate * 3) + 1
+            # data = data[:data_len]
+            num_steps = truncate
 
         init_frame = data["initial"]
         # TODO: hardcoded categories

@@ -15,6 +15,7 @@
 import unittest
 
 from loguru import logger
+from tqdm import tqdm
 
 from .. import data as e_data
 from ..models import EdgeDroidModel, ZeroWaitFrameSamplingModel
@@ -27,28 +28,33 @@ class EndToEndTest(unittest.TestCase):
         # simple end to end test with a constant execution time model
         # intended to check that the EdgeDroid model is generating the correct
         # success frames without having to wait for 20 minutes
+        # also checks truncating
 
-        trace = f"test"
-        logger.debug(f"Testing trace {trace}")
-        frameset = e_data.load_default_trace(trace)
-        frame_model = ZeroWaitFrameSamplingModel(
-            e_data.load_default_frame_probabilities()
-        )
+        trace = f"square00"
+        for tlen in (5, 50, None):
+            logger.debug(f"Testing trace {trace} (truncated to {tlen})")
+            frameset = e_data.load_default_trace(trace, truncate=tlen)
+            frame_model = ZeroWaitFrameSamplingModel(
+                e_data.load_default_frame_probabilities()
+            )
 
-        timing_model = NaiveExecutionTimeModel(0)
+            timing_model = NaiveExecutionTimeModel(0)
 
-        model = EdgeDroidModel(
-            frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
-        )
+            model = EdgeDroidModel(
+                frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
+            )
 
-        task = LEGOTask(e_data.load_default_task(trace))
-        for model_step in model.play_steps():
-            for model_frame in model_step:
-                self.assertEqual(
-                    FrameResult.SUCCESS,
-                    task.submit_frame(model_frame.frame_data),
-                    model_frame,
-                )
-                break  # break otherwise we'll keep replaying the success frame
-        logger.success(f"Trace {trace} passed test")
-        logger.debug(f"Step metrics:\n{model.model_step_metrics()}")
+            task = LEGOTask(e_data.load_default_task(trace, truncate=tlen))
+            for model_step in tqdm(model.play_steps(), total=task.task_length):
+                self.assertFalse(task.finished)
+                for model_frame in model_step:
+                    self.assertEqual(
+                        FrameResult.SUCCESS,
+                        task.submit_frame(model_frame.frame_data),
+                        model_frame,
+                    )
+                    break  # break otherwise we'll keep replaying the success frame
+
+            self.assertTrue(task.finished)
+            logger.success(f"Trace {trace} passed test")
+            logger.debug(f"Step metrics:\n{model.model_step_metrics()}")
