@@ -16,7 +16,7 @@ import contextlib
 import socket
 import time
 from collections import deque
-from typing import Callable, Literal, Optional
+from typing import Callable, Literal
 
 import click
 import numpy.typing as npt
@@ -48,10 +48,10 @@ class StreamSocketEmulation:
         fade_distance: int,
         model: Literal["theoretical", "empirical", "naive"] = "theoretical",
         sampling: str = "zero-wait",
-        truncate: Optional[int] = None,
+        truncate: int = -1,
     ):
 
-        trunc_log = f"(truncated to {truncate} steps)" if truncate is not None else ""
+        trunc_log = f"(truncated to {truncate} steps)" if truncate >= 0 else ""
         logger.info(
             f"""
 Initializing EdgeDroid model with:

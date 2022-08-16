@@ -17,11 +17,11 @@ from importlib.resources import as_file
 from typing import List, Optional, Tuple
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import pooch
-from pandas import arrays
-import numpy.typing as npt
 from loguru import logger
+from pandas import arrays
 
 __all__ = [
     "load_default_frame_probabilities",
@@ -85,7 +85,7 @@ def load_default_frame_probabilities() -> pd.DataFrame:
         return pd.read_csv(fp)
 
 
-def load_default_trace(trace_name: str, truncate: Optional[int] = None) -> FrameSet:
+def load_default_trace(trace_name: str, truncate: int = -1) -> FrameSet:
     logger.debug(
         f"Loading default trace '{trace_name}' "
         f"with known hash {_default_traces[trace_name]}"
@@ -114,7 +114,7 @@ class TaskLoadException(Exception):
 
 def load_default_task(
     task_name: str,
-    truncate: Optional[int] = None,
+    truncate: int = -1,
 ) -> List[npt.NDArray[int]]:
     from . import resources as edgedroid_resources
 
@@ -123,7 +123,7 @@ def load_default_task(
         states = np.load(str(fp))
 
     num_states = len(states)
-    if truncate is not None:
+    if truncate >= 0:
         if len(states) < truncate:
             raise TaskLoadException(
                 f"Task has {num_states} steps, which is less than the desired "

@@ -66,7 +66,7 @@ class TestCli(unittest.TestCase):
         self.runner = CliRunner()
         self.task = "test"
         self.port = 5000
-        self.truncate = (None, 3)
+        self.truncate = (-1, 3)
 
     def test_server_cli(self):
         with Pool() as pool, tempfile.TemporaryDirectory() as tmpdir:
@@ -75,11 +75,6 @@ class TestCli(unittest.TestCase):
                     run_client,
                     args=(self.task, self.port, trunc),
                 )
-
-                if trunc is not None:
-                    trunc_args = ["--truncate", f"{trunc}"]
-                else:
-                    trunc_args = []
 
                 res = self.runner.invoke(
                     edgedroid_server,
@@ -90,8 +85,9 @@ class TestCli(unittest.TestCase):
                         "-o",
                         tmpdir,
                         "-v",
-                    ]
-                    + trunc_args,
+                        "--truncate",
+                        f"{trunc}",
+                    ],
                 )
                 self.assertEqual(res.exit_code, 0)
 
@@ -105,11 +101,6 @@ class TestCli(unittest.TestCase):
                     run_server,
                     args=(self.task, self.port, trunc),
                 )
-
-                if trunc is not None:
-                    trunc_args = ["--truncate", f"{trunc}"]
-                else:
-                    trunc_args = []
 
                 res = self.runner.invoke(
                     edgedroid_client,
@@ -126,8 +117,9 @@ class TestCli(unittest.TestCase):
                         "-o",
                         f"{tmpdir}",
                         "-v",
-                    ]
-                    + trunc_args,
+                        "--truncate",
+                        f"{trunc}",
+                    ],
                 )
                 self.assertEqual(res.exit_code, 0)
 

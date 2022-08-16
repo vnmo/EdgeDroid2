@@ -117,7 +117,7 @@ class FrameSet:
         cls,
         task_name: str,
         trace_path: PathLike | str,
-        truncate: Optional[int] = None,
+        truncate: int = -1,
     ) -> FrameSet:
         """
         Opens a frame tracefile and parses it.
@@ -161,7 +161,7 @@ class FrameSet:
         # truncate to the given number of steps
         num_steps = (len(data) - 1) // 3
 
-        if truncate is not None:
+        if truncate >= 0:
             if num_steps < truncate:
                 raise TraceException(
                     f"Trace {task_name} ({trace_path}) has {num_steps} "

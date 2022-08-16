@@ -19,7 +19,7 @@ import socket
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
-from typing import Callable, Dict, Iterator, Optional, Tuple
+from typing import Callable, Dict, Iterator, Tuple
 
 import pandas as pd
 from gabriel_lego import FrameResult, LEGOTask
@@ -47,7 +47,7 @@ def server(
     task_name: str,
     sock: socket.SocketType,
     result_cb: Callable[[FrameResult], None] = lambda _: None,
-    truncate: Optional[int] = None,
+    truncate: int = -1,
 ) -> pd.DataFrame:
     logger.info(f"Starting LEGO task trace '{task_name}'")
     records = deque()
@@ -120,7 +120,7 @@ def serve_LEGO_task(
     port: int,
     output_path: pathlib.Path,
     bind_address: str = "0.0.0.0",
-    truncate: Optional[int] = None,
+    truncate: int = -1,
 ) -> None:
     with contextlib.ExitStack() as stack:
         # enter context
@@ -131,7 +131,7 @@ def serve_LEGO_task(
         )
 
         logger.info(f"Serving LEGO task {task_name} on {bind_address}:{port}/tcp")
-        if truncate is not None:
+        if truncate >= 0:
             logger.info(f"Task is truncated to {truncate} steps")
         # logger.debug(f"One-shot mode: {'on' if one_shot else 'off'}")
         try:

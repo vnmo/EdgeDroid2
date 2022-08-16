@@ -44,11 +44,11 @@ from ..common_cli import enable_logging
 @click.option(
     "--truncate",
     type=int,
-    default=None,
+    default=-1,
     help="Truncate the specified task trace to a given number of steps. "
     "Note that the client needs to be configured with the same value for the "
     "emulation to work.",
-    show_default=True,
+    show_default=False,
 )
 @click.option(
     "-o",
@@ -77,7 +77,7 @@ def edgedroid_server(
     bind_address: str,
     bind_port: int,
     task: str,
-    truncate: Optional[int],
+    truncate: int,
     # one_shot: bool,
     verbose: bool,
     output_dir: Optional[pathlib.Path],

@@ -31,7 +31,7 @@ class EndToEndTest(unittest.TestCase):
         # also checks truncating
 
         trace = f"square00"
-        for tlen in (5, 50, None):
+        for tlen in (5, 50, -1):
             logger.debug(f"Testing trace {trace} (truncated to {tlen})")
             frameset = e_data.load_default_trace(trace, truncate=tlen)
             frame_model = ZeroWaitFrameSamplingModel(

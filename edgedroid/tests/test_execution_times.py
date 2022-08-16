@@ -116,6 +116,34 @@ class TestDataPreprocessing(TestCase):
         # TODO
         pass
 
+    def test_truncating(self):
+        task_name = "square00"
+        good_truncs = (1, 5, 10, 30, 150)
+        bad_truncs = (180, 200)
+
+        self.assertEqual(
+            load_default_trace(task_name).step_count,
+            load_default_trace(task_name, truncate=-100).step_count,
+        )
+        self.assertEqual(
+            len(load_default_task(task_name)),
+            len(load_default_task(task_name, truncate=-100)),
+        )
+
+        for trunc in good_truncs:
+            trace = load_default_trace(task_name, truncate=trunc)
+            self.assertEqual(trunc, trace.step_count)  # plus initial trigger step
+
+            task = load_default_task(task_name, truncate=trunc)
+            self.assertEqual(trunc, len(task))
+
+        for trunc in bad_truncs:
+            with self.assertRaises(Exception):
+                load_default_trace(task_name, truncate=trunc)
+
+            with self.assertRaises(Exception):
+                load_default_task(task_name, truncate=trunc)
+
 
 class TestModels(unittest.TestCase):
     def setUp(self) -> None:
