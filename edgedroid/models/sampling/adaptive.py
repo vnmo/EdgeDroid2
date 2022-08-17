@@ -309,6 +309,10 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # )
         self._timing_model.advance(ttf)
 
+        # TODO: staggered start?
+        # TODO: measure best-case round-trip time
+        # TODO: record alpha?
+
         beta = 1.0
         alpha = float(np.mean(self._delay_costs))
 
