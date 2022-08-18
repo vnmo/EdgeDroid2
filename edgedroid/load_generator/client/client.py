@@ -113,7 +113,7 @@ Initializing EdgeDroid model with:
                 frame_model = AperiodicFrameSamplingModel(
                     e_data.load_default_frame_probabilities(),
                     execution_time_model=timing_model,
-                    step_delay_cost_window=1,  # TODO: tweak
+                    # step_delay_cost_window=1,  # TODO: tweak
                 )
             case _:
                 raise NotImplementedError(f"No such sampling strategy: {sampling}")
