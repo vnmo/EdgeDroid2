@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import itertools
+import os
 import time
 from collections import deque
 from typing import Iterator, Tuple
@@ -240,16 +241,21 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     Implements Vishnu's aperiodic sampling.
     """
 
+    DELAY_COST_WINDOW_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_DELAY_COST_WINDOW"
+    BETA_CONST_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_BETA"
+    INIT_NETTIME_GUESS_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_NETTIME_GUESS"
+    PROCTIME_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_PROCTIME"
+
     def __init__(
         self,
         probabilities: pd.DataFrame,
         execution_time_model: ExecutionTimeModel,
         success_tag: str = "success",
-        init_network_time_guess_seconds: float = 0.3,  # based on exp data
-        processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
+        # init_network_time_guess_seconds: float = 0.3,  # based on exp data
+        # processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
         # idle_factor: float = 4.0,
         # busy_factor: float = 6.0,  # TODO: document, based on power consumption
-        step_delay_cost_window: int = 5,
+        # step_delay_cost_window: int = 5,
     ):
         """
 
@@ -261,11 +267,11 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
             An execution time model to predict the next steps execution time.
         success_tag
 
-        init_network_time_guess_seconds
-            Initial guess for the network time.
-        processing_time_seconds
-            Factor, expressed in seconds, that is subtracted from frame round-trip
-            times, representing the time processing took on the backend.
+        # init_network_time_guess_seconds
+        #     Initial guess for the network time.
+        # processing_time_seconds
+        #     Factor, expressed in seconds, that is subtracted from frame round-trip
+        #     times, representing the time processing took on the backend.
         # idle_factor
         #     Estimated idle power consumption of the client.
         # busy_factor
@@ -282,15 +288,18 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
 
         # self._initial_nt_guess = init_network_time_guess_seconds
         # self._network_times = deque()
+        # TODO: defaults are magic numbers
+
         self._delay_costs = deque(
-            [init_network_time_guess_seconds],
-            maxlen=step_delay_cost_window,
+            [float(os.getenv(self.INIT_NETTIME_GUESS_ENVVAR, 0.3))],
+            maxlen=int(os.getenv(self.DELAY_COST_WINDOW_ENVVAR, 5)),
         )
 
         # self._idle_factor = idle_factor
         # self._busy_factor = busy_factor
 
-        self._processing_time = processing_time_seconds
+        self._processing_time = float(os.getenv(self.PROCTIME_ENVVAR, 0.0))
+        self._beta = float(os.getenv(self.BETA_CONST_ENVVAR, 1.0))
 
     def step_iterator(
         self,
@@ -313,14 +322,13 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # TODO: measure best-case round-trip time
         # TODO: record alpha?
 
-        beta = 1.0
         alpha = float(np.mean(self._delay_costs))
 
         for i, target_instant in enumerate(
             _aperiodic_instant_iterator(
                 mu=self._timing_model.get_expected_execution_time(),
                 alpha=alpha,
-                beta=beta,
+                beta=self._beta,
                 # alpha=self._current_rtt_mean *
                 # (self._busy_factor - self._idle_factor),
                 # beta=self._idle_factor,
