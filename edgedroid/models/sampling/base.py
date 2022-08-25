@@ -439,27 +439,28 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
         infinite: bool = False,
     ) -> Iterator[FrameSample]:
         step_start = time.monotonic()
-        late = False
-        time.sleep(self._interval)
+        dt = 0
 
         for seq in itertools.count(start=1):
-            instant = (t_sample := time.monotonic()) - step_start
+            try:
+                time.sleep(self._interval - dt)
+                late = False
+            except ValueError:
+                # missed the deadline (i.e. rtt was too high)
+                late = True
+
+            instant = time.monotonic() - step_start
             yield FrameSample(
                 seq=seq,
                 sample_tag=self.get_frame_at_instant(instant, target_time),
                 instant=instant,
                 extra={
                     "target_interval": self._interval,
+                    "actual_interval": dt if late else self._interval,
                     "late_sample": late,
                 },
             )
+            dt = (time.monotonic() - step_start) - instant
 
             if instant > target_time:
                 break
-
-            dt = time.monotonic() - t_sample
-            try:
-                time.sleep(self._interval - dt)
-            except ValueError:
-                # missed the deadline (i.e. rtt was too high)
-                late = True
