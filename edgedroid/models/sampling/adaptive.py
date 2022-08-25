@@ -248,7 +248,6 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     BETA_CONST_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_BETA"
     INIT_NETTIME_GUESS_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_NETTIME_GUESS"
     PROCTIME_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_PROCTIME"
-    OUTPUT_FILE = "EDGEDROID_ADAPTIVE_SAMPLING_OUTPUT"
 
     def __init__(
         self,
@@ -355,6 +354,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
                     "ttf": ttf,
                     "target_instant": target_instant,
                     "late": late,
+                    "delay_cost_window": self._delay_costs.maxlen,
                 },
             )
             dt = time.monotonic() - tsend
