@@ -141,6 +141,7 @@ class ClientProcess(Process):
                     resp_cb=self._guide_callback,
                 )
                 logger.success("Emulation done!")
+                print(emulation.get_frame_metrics())
             finally:
                 sock.close()
         finally:

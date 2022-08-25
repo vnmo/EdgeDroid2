@@ -5,13 +5,13 @@ import itertools
 import os
 import time
 from collections import deque
-from typing import Iterator, Tuple
+from typing import Iterator
 
 import numpy as np
 import pandas as pd
 from numpy import typing as npt
 
-from .base import BaseFrameSamplingModel
+from .base import BaseFrameSamplingModel, FrameSample
 from ..timings import ExecutionTimeModel
 
 
@@ -241,10 +241,14 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     Implements Vishnu's aperiodic sampling.
     """
 
+    # TODO: better way of parameterizing this?
+    # TODO: document?
+
     DELAY_COST_WINDOW_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_DELAY_COST_WINDOW"
     BETA_CONST_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_BETA"
     INIT_NETTIME_GUESS_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_NETTIME_GUESS"
     PROCTIME_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_PROCTIME"
+    OUTPUT_FILE = "EDGEDROID_ADAPTIVE_SAMPLING_OUTPUT"
 
     def __init__(
         self,
@@ -252,7 +256,8 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         execution_time_model: ExecutionTimeModel,
         success_tag: str = "success",
         # init_network_time_guess_seconds: float = 0.3,  # based on exp data
-        # processing_time_seconds: float = 0.0,  # 0.3,  # taken from experimental data
+        # processing_time_seconds: float = 0.0,  # 0.3,  # taken from
+        # experimental data
         # idle_factor: float = 4.0,
         # busy_factor: float = 6.0,  # TODO: document, based on power consumption
         # step_delay_cost_window: int = 5,
@@ -306,7 +311,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[Tuple[str, float]]:
+    ) -> Iterator[FrameSample]:
 
         step_start = time.monotonic()
         # step_rtts = deque()
@@ -318,9 +323,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # )
         self._timing_model.advance(ttf)
 
-        # TODO: staggered start?
-        # TODO: measure best-case round-trip time
-        # TODO: record alpha?
+        # TODO: check how often devolves into zero-wait
 
         alpha = float(np.mean(self._delay_costs))
 
@@ -334,9 +337,26 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
                 # beta=self._idle_factor,
             )
         ):
-            time.sleep(max(0.0, target_instant - (time.monotonic() - step_start)))
+            try:
+                time.sleep(target_instant - (time.monotonic() - step_start))
+                late = False
+            except ValueError:
+                # missed the sampling instant
+                late = True
+
             instant = (tsend := time.monotonic()) - step_start
-            yield self.get_frame_at_instant(instant, target_time), instant
+            yield FrameSample(
+                seq=i + 1,
+                sample_tag=self.get_frame_at_instant(instant, target_time),
+                instant=instant,
+                extra={
+                    "alpha": alpha,
+                    "beta": self._beta,
+                    "ttf": ttf,
+                    "target_instant": target_instant,
+                    "late": late,
+                },
+            )
             dt = time.monotonic() - tsend
 
             if instant > target_time:

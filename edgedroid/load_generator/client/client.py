@@ -157,7 +157,7 @@ Initializing EdgeDroid model with:
             for step_num, model_step in enumerate(self._model.play_steps()):
                 logger.info(f"Current step: {step_num}")
                 ti = time.monotonic()
-                for frame_index, model_frame in enumerate(model_step):
+                for model_frame in model_step:
                     # package and send the frame
                     logger.debug(
                         f"Sending frame:\n"
@@ -184,6 +184,7 @@ Initializing EdgeDroid model with:
                     resp_cb(transition, guidance_img, guidance_text)
 
                     # log the frame
+
                     self._frame_records.append(
                         {
                             "seq": model_frame.seq,
@@ -195,6 +196,10 @@ Initializing EdgeDroid model with:
                             "rtt": rtt,
                             "send_size_bytes": len(payload),
                             "recv_size_bytes": resp_size_bytes,
+                            **{
+                                f"extra_{k}": v
+                                for k, v in model_frame.extra_data.items()
+                            },
                         }
                     )
 
@@ -208,7 +213,7 @@ Initializing EdgeDroid model with:
 
                 logger.success("Advancing to next step")
                 dt = time.monotonic() - ti
-                fps = (frame_index + 1) / dt
+                fps = model_frame.step_seq / dt
                 logger.debug(f"Step performance: {fps:0.2f} FPS")
 
         logger.warning("Emulation finished")

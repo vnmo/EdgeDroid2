@@ -15,7 +15,7 @@
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
-from typing import Dict, Iterator, List
+from typing import Any, Dict, Iterator, List
 
 import numpy.typing as npt
 import pandas as pd
@@ -28,6 +28,7 @@ from .sampling import (
     RegularFrameSamplingModel,
     ZeroWaitFrameSamplingModel,
     AperiodicFrameSamplingModel,
+    FrameSample,
 )
 from .timings import (
     EmpiricalExecutionTimeModel,
@@ -62,6 +63,7 @@ class ModelFrame:
     step_target_time: float
     frame_tag: str
     frame_data: npt.NDArray
+    extra_data: Dict[str, Any]
 
 
 @dataclass(frozen=True, eq=True)
@@ -159,6 +161,7 @@ class EdgeDroidModel:
                 step_frame_time=0,
                 frame_tag="initial",
                 frame_data=self._frames.get_initial_frame(),
+                extra_data={},
             )
 
         yield _init_iter()
@@ -193,25 +196,28 @@ class EdgeDroidModel:
             step_frame_timestamps.clear()
 
             def _frame_iter_for_step() -> Iterator[ModelFrame]:
+                # TODO: implement sampling records
                 # replay frames for step
-                for seq, (frame_tag, instant) in enumerate(
-                    self._frame_dists.step_iterator(
-                        target_time=execution_time,
-                        # infinite=True,
-                        ttf=ttf,
-                    )
+                for sample in self._frame_dists.step_iterator(
+                    target_time=execution_time,
+                    # infinite=True,
+                    ttf=ttf,
                 ):
                     self._frame_count += 1
                     # record frame emission timestamp
                     step_frame_timestamps.append(time.monotonic())
                     yield ModelFrame(
                         seq=self._frame_count,
-                        step_seq=seq + 1,
+                        step_seq=sample.seq,
                         step_index=step_index,
-                        step_frame_time=instant,
+                        step_frame_time=sample.instant,
                         step_target_time=execution_time,
-                        frame_tag=frame_tag,
-                        frame_data=self._frames.get_frame(step_index, frame_tag),
+                        frame_tag=sample.sample_tag,
+                        frame_data=self._frames.get_frame(
+                            step_index,
+                            sample.sample_tag,
+                        ),
+                        extra_data=sample.extra,
                     )
 
             yield _frame_iter_for_step()

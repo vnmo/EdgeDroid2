@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 import abc
+import itertools
 import time
 from collections import deque
 from os import PathLike
-from typing import Any, Dict, Iterator, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, NamedTuple, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -190,6 +191,13 @@ class FrameSet:
         return FrameSet(name=task_name, initial_frame=init_frame, steps=steps)
 
 
+class FrameSample(NamedTuple):
+    seq: int
+    sample_tag: str
+    instant: float
+    extra: Dict[str, Any]
+
+
 class BaseFrameSamplingModel(abc.ABC):
     def __init__(self, probabilities: pd.DataFrame, success_tag: str = "success"):
         """
@@ -312,7 +320,7 @@ class BaseFrameSamplingModel(abc.ABC):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[Tuple[str, float]]:
+    ) -> Iterator[FrameSample]:
         pass
 
 
@@ -322,7 +330,7 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[Tuple[str, float]]:
+    ) -> Iterator[FrameSample]:
         """
         An iterator over the frame tags in a step.
         Any calls to next() between instants 0 and target_time will
@@ -338,9 +346,14 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
         """
 
         step_start = time.monotonic()
-        while True:
+        for seq in itertools.count(start=1):
             instant = time.monotonic() - step_start
-            yield self.get_frame_at_instant(instant, target_time), instant
+            yield FrameSample(
+                seq=seq,
+                sample_tag=self.get_frame_at_instant(instant, target_time),
+                instant=instant,
+                extra={},
+            )
             if instant > target_time:
                 break
 
@@ -351,12 +364,17 @@ class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[Tuple[str, float]]:
+    ) -> Iterator[FrameSample]:
         step_start = time.monotonic()
-        while True:
+        for seq in itertools.count(start=1):
             time.sleep(max(target_time - (time.monotonic() - step_start), 0))
             dt = time.monotonic() - step_start
-            yield self.get_frame_at_instant(dt, target_time), dt
+            yield FrameSample(
+                seq=seq,
+                sample_tag=self.get_frame_at_instant(dt, target_time),
+                instant=dt,
+                extra={},
+            )
             if dt > target_time:
                 break
 
@@ -382,12 +400,17 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[Tuple[str, float]]:
+    ) -> Iterator[FrameSample]:
         step_start = time.monotonic()
         time.sleep(self._hold_time)
-        while True:
+        for seq in itertools.count(start=1):
             instant = time.monotonic() - step_start
-            yield self.get_frame_at_instant(instant, target_time), instant
+            yield FrameSample(
+                seq=seq,
+                sample_tag=self.get_frame_at_instant(instant, target_time),
+                instant=instant,
+                extra={},
+            )
             if instant > target_time:
                 break
 
@@ -414,16 +437,29 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
         target_time: float,
         ttf: float,
         infinite: bool = False,
-    ) -> Iterator[Tuple[str, float]]:
+    ) -> Iterator[FrameSample]:
         step_start = time.monotonic()
+        late = False
         time.sleep(self._interval)
 
-        while True:
-            t_sample = time.monotonic()
-            instant = t_sample - step_start
-            yield self.get_frame_at_instant(instant, target_time), instant
+        for seq in itertools.count(start=1):
+            instant = (t_sample := time.monotonic()) - step_start
+            yield FrameSample(
+                seq=seq,
+                sample_tag=self.get_frame_at_instant(instant, target_time),
+                instant=instant,
+                extra={
+                    "target_interval": self._interval,
+                    "late_sample": late,
+                },
+            )
+
             if instant > target_time:
                 break
 
             dt = time.monotonic() - t_sample
-            time.sleep(max(0.0, self._interval - dt))
+            try:
+                time.sleep(self._interval - dt)
+            except ValueError:
+                # missed the deadline (i.e. rtt was too high)
+                late = True
