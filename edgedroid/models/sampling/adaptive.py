@@ -22,7 +22,7 @@ def _aperiodic_instant_iterator(
     n_offset: int = 1,
 ) -> Iterator[float]:
     """
-    Iterates over (quasi) optimal sampling intervals for a step, assuming execution
+    Iterates over (quasi) optimal sampling instants for a step, assuming execution
     times sampled from a Rayleigh distribution with expected value mu.
 
     Parameters
@@ -343,7 +343,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
                 # missed the sampling instant
                 late = True
 
-            instant = (tsend := time.monotonic()) - step_start
+            instant = time.monotonic() - step_start
             yield FrameSample(
                 seq=i + 1,
                 sample_tag=self.get_frame_at_instant(instant, target_time),
@@ -357,7 +357,7 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
                     "delay_cost_window": self._delay_costs.maxlen,
                 },
             )
-            dt = time.monotonic() - tsend
+            dt = (time.monotonic() - step_start) - instant
 
             if instant > target_time:
                 num_samples = i + 1
