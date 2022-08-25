@@ -196,6 +196,7 @@ Initializing EdgeDroid model with:
                             "rtt": rtt,
                             "send_size_bytes": len(payload),
                             "recv_size_bytes": resp_size_bytes,
+                            "frame_step_time": model_frame.step_frame_time,
                             **{
                                 f"extra_{k}": v
                                 for k, v in model_frame.extra_data.items()
