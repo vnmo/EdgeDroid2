@@ -246,11 +246,10 @@ def edgedroid_client(
                 yaml.safe_dump(
                     dict(
                         host=f"{host}:{port}",
-                        neuroticism=neuroticism,
                         task=trace,
-                        fade_distance=fade_distance,
-                        timing_model=timing_model,
                         sampling_strategy=sampling_strategy,
+                        timing_model=timing_model,
+                        timing_model_params=emulation.get_timing_model_parameters(),
                     ),
                     stream=fp,
                     explicit_start=True,

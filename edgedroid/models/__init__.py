@@ -132,6 +132,9 @@ class EdgeDroidModel:
             [a.to_dict() for a in self._step_records],
         ).set_index("step_number")
 
+    def timing_model_params(self) -> Dict[str, Any]:
+        return self._timings.get_model_params()
+
     @property
     def step_count(self) -> int:
         return self._frames.step_count

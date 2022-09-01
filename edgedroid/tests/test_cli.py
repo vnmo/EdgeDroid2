@@ -121,6 +121,9 @@ class TestCli(unittest.TestCase):
                         f"{trunc}",
                     ],
                 )
+                if res.exit_code != 0 and res.exception:
+                    raise res.exception
+
                 self.assertEqual(res.exit_code, 0)
 
                 if isinstance((cres := server_proc.get(timeout=1.0)), Exception):

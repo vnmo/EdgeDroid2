@@ -27,6 +27,26 @@ from pandas import arrays
 from scipy import stats
 
 
+def _serialize_interval(interval: pd.Interval) -> Dict[str, float | bool]:
+    left_open = interval.open_left
+    right_open = interval.open_right
+
+    if left_open and right_open:
+        closed = "neither"
+    elif left_open:
+        closed = "right"
+    elif right_open:
+        closed = "left"
+    else:
+        closed = "both"
+
+    return {
+        "left": float(interval.left),
+        "right": float(interval.right),
+        "closed": closed,
+    }
+
+
 class ModelException(Exception):
     """
     Exception raised during model execution.
@@ -278,6 +298,10 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         model.reset()
         return model
 
+    @abc.abstractmethod
+    def get_model_params(self) -> Dict[str, Any]:
+        pass
+
 
 class NaiveExecutionTimeModel(ExecutionTimeModel):
     """
@@ -320,6 +344,11 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
     def __init__(self, execution_time_seconds: float):
         super(NaiveExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
+
+    def get_model_params(self) -> Dict[str, Any]:
+        return {
+            "execution_time_seconds": float(self._exec_time),
+        }
 
     def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
         # no-op
@@ -384,10 +413,12 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         """
 
         super().__init__()
+        self._neuro_bins = data["neuroticism"].unique()
+
         # first, we filter on neuroticism
         data = data[data["neuroticism"].array.contains(neuroticism)]
         self._neuroticism = neuroticism
-        self._neuro_binned = data["neuroticism"].unique()[0]
+        self._neuro_binned = data["neuroticism"].iloc[0]
 
         # next, prepare views
         self._data_views = (
@@ -429,6 +460,18 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
         # random state
         self._rng = np.random.default_rng()
+
+    def get_model_params(self) -> Dict[str, Any]:
+        return {
+            "neuroticism": float(self._neuroticism),
+            "binned_neuroticism": _serialize_interval(self._neuro_binned),
+            "fade_distance": int(self._fade_distance),
+            "neuro_bins": [_serialize_interval(iv) for iv in self._neuro_bins],
+            "impairment_bins": [
+                _serialize_interval(iv) for iv in self._impairment_bins
+            ],
+            "duration_bins": [_serialize_interval(iv) for iv in self._duration_bins],
+        }
 
     def copy(self: TTimingModel) -> TTimingModel:
         model_copy = super(EmpiricalExecutionTimeModel, self).copy()
@@ -577,6 +620,12 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
 
         self._max_score = _max_exec_time_mean - _min_exec_time_mean
         self._score_offset = _min_exec_time_mean
+        self._distribution = distribution
+
+    def get_model_params(self) -> Dict[str, Any]:
+        params = super(TheoreticalExecutionTimeModel, self).get_model_params()
+        params["distribution"] = str(self._distribution.name)
+        return params
 
     def _get_dist_for_current_state(self) -> stats.rv_continuous:
         # get the appropriate distribution

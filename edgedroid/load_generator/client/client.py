@@ -16,7 +16,7 @@ import contextlib
 import socket
 import time
 from collections import deque
-from typing import Callable, Literal
+from typing import Any, Callable, Dict, Literal
 
 import click
 import numpy.typing as npt
@@ -123,6 +123,9 @@ Initializing EdgeDroid model with:
         )
 
         self._frame_records = deque()
+
+    def get_timing_model_parameters(self) -> Dict[str, Any]:
+        return self._model.timing_model_params()
 
     def get_step_metrics(self) -> pd.DataFrame:
         return self._model.model_step_metrics()
