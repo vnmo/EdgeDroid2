@@ -118,7 +118,7 @@ class ClientProcess(Process):
             neuroticism=self._neuro,
             trace=self._task,
             fade_distance=self._fade_dist,
-            sampling="adaptive-aperiodic",
+            sampling="zero-wait",
         )
         socket_addr = f"/tmp/{uuid.uuid4()}.sock"
 

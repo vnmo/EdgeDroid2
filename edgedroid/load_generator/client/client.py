@@ -36,8 +36,11 @@ from ...models import (
     RegularFrameSamplingModel,
     TheoreticalExecutionTimeModel,
     ZeroWaitFrameSamplingModel,
+    ProbabilisticNaiveExecutionTimeModel,
+    NaiveExecutionTimeModel,
 )
-from ...models.timings import NaiveExecutionTimeModel
+
+# from ...models.timings import NaiveExecutionTimeModel
 
 
 class StreamSocketEmulation:
@@ -84,6 +87,10 @@ Initializing EdgeDroid model with:
             case "naive":
                 timing_model: ExecutionTimeModel = (
                     NaiveExecutionTimeModel.from_default_data()
+                )
+            case "probabilistic-naive":
+                timing_model: ExecutionTimeModel = (
+                    ProbabilisticNaiveExecutionTimeModel.from_default_data()
                 )
             case _:
                 raise NotImplementedError(f"Unrecognized execution time model: {model}")

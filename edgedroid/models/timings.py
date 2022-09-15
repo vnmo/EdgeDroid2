@@ -371,6 +371,60 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
         pass
 
 
+class ProbabilisticNaiveExecutionTimeModel(ExecutionTimeModel):
+    """
+    Returns execution times sampled from a simple distribution.
+    """
+
+    @classmethod
+    def from_default_data(cls) -> ExecutionTimeModel:
+        """
+        Builds a naive model from the default data.
+
+        Returns
+        -------
+        ExecutionTimeModel
+            A naive execution time model.
+        """
+        from .. import data as e_data
+
+        data, *_ = e_data.load_default_exec_time_data()
+        return cls(data["exec_time"].to_numpy())
+
+    def __init__(self, execution_times: npt.NDArray):
+        super(ProbabilisticNaiveExecutionTimeModel, self).__init__()
+        self._exec_times = execution_times
+        self._rng = np.random.default_rng()
+
+    def get_model_params(self) -> Dict[str, Any]:
+        return {
+            "execution_time_seconds": {
+                "mean": self._exec_times.mean(),
+                "std": self._exec_times.std(),
+            }
+        }
+
+    def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
+        # no-op
+        return self
+
+    def get_impairment_score(self) -> float:
+        return 0.0
+
+    def get_execution_time(self) -> float:
+        return self._rng.choice(self._exec_times)
+
+    def get_expected_execution_time(self) -> float:
+        return self._exec_times.mean()
+
+    def state_info(self) -> Dict[str, Any]:
+        return {}
+
+    def reset(self) -> None:
+        # no-op
+        pass
+
+
 class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     """
     Implementation of an execution time model which returns execution times
