@@ -76,7 +76,15 @@ from ..common_cli import enable_logging
 @click.option(
     "-m",
     "--timing-model",
-    type=click.Choice(["empirical", "theoretical", "naive"], case_sensitive=False),
+    type=click.Choice(
+        [
+            "empirical",
+            "theoretical",
+            "naive",
+            "probabilistic-naive",
+        ],
+        case_sensitive=True,
+    ),
     default="theoretical",
     show_default=True,
     help="Execution time model to use:\n"
@@ -86,6 +94,7 @@ from ..common_cli import enable_logging
     "\t- 'theoretical' first fits distributions to the data and then samples.\n"
     "\t- 'naive' uses a constant execution time equal to the mean execution time "
     "of the underlying data.\n"
+    "\t - 'probabilistic-naive' samples the underlying data without any grouping\n"
     "\t\n",
 )
 @click.option(
@@ -143,7 +152,7 @@ def edgedroid_client(
     trace: str,
     truncate: int,
     fade_distance: int,
-    timing_model: Literal["empirical", "theoretical", "naive"],
+    timing_model: Literal["empirical", "theoretical", "naive", "probabilistic-naive"],
     sampling_strategy: str,
     verbose: bool,
     # step_records_output: Optional[pathlib.Path],
@@ -172,6 +181,7 @@ def edgedroid_client(
 
     enable_logging(verbose, log_file=log_file)
 
+    # noinspection PyTypeChecker
     emulation = StreamSocketEmulation(
         neuroticism=neuroticism,
         trace=trace,

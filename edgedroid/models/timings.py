@@ -399,8 +399,8 @@ class ProbabilisticNaiveExecutionTimeModel(ExecutionTimeModel):
     def get_model_params(self) -> Dict[str, Any]:
         return {
             "execution_time_seconds": {
-                "mean": self._exec_times.mean(),
-                "std": self._exec_times.std(),
+                "mean": float(self._exec_times.mean()),
+                "std": float(self._exec_times.std()),
             }
         }
 

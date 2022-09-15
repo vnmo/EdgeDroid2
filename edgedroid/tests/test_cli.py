@@ -1,5 +1,6 @@
 import socket
 import tempfile
+import time
 import unittest
 from multiprocessing import Pool
 from typing import Optional
@@ -38,13 +39,15 @@ def run_client(
     task: str = "test",
     port: int = 5000,
     truncate: Optional[int] = None,
+    wait_seconds: float = 1.0,
 ):
+    time.sleep(wait_seconds)
     try:
         emulation = StreamSocketEmulation(
             neuroticism=0.5,
             trace=task,
             fade_distance=8,
-            model="empirical",
+            model="probabilistic-naive",
             sampling="ideal",
             truncate=truncate,
         )
@@ -73,7 +76,7 @@ class TestCli(unittest.TestCase):
             for trunc in self.truncate:
                 client_proc = pool.apply_async(
                     run_client,
-                    args=(self.task, self.port, trunc),
+                    args=(self.task, self.port, trunc, 1.0),
                 )
 
                 res = self.runner.invoke(
@@ -101,6 +104,7 @@ class TestCli(unittest.TestCase):
                     run_server,
                     args=(self.task, self.port, trunc),
                 )
+                time.sleep(1.0)  # give it some time to start...
 
                 res = self.runner.invoke(
                     edgedroid_client,
@@ -111,7 +115,7 @@ class TestCli(unittest.TestCase):
                         "-n",
                         "0.5",
                         "-m",
-                        "empirical",
+                        "probabilistic-naive",
                         "-s",
                         "ideal",
                         "-o",

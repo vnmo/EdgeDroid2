@@ -49,7 +49,12 @@ class StreamSocketEmulation:
         neuroticism: float,
         trace: str,
         fade_distance: int,
-        model: Literal["theoretical", "empirical", "naive"] = "theoretical",
+        model: Literal[
+            "theoretical",
+            "empirical",
+            "naive",
+            "probabilistic-naive",
+        ] = "theoretical",
         sampling: str = "zero-wait",
         truncate: int = -1,
     ):
