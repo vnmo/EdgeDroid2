@@ -1,0 +1,8 @@
+jupyter
+notebook
+jupyterlab
+scipy
+numpy
+-e .
+matplotlib
+seaborn
