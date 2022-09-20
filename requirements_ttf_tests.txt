@@ -6,3 +6,4 @@ numpy
 -e .
 matplotlib
 seaborn
+multiprocess
