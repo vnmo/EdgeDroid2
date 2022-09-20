@@ -47,7 +47,7 @@ def run_client(
             neuroticism=0.5,
             trace=task,
             fade_distance=8,
-            model="probabilistic-naive",
+            model="fitted-naive",
             sampling="ideal",
             truncate=truncate,
         )
@@ -115,7 +115,7 @@ class TestCli(unittest.TestCase):
                         "-n",
                         "0.5",
                         "-m",
-                        "probabilistic-naive",
+                        "fitted-naive",
                         "-s",
                         "ideal",
                         "-o",

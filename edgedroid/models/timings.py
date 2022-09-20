@@ -371,7 +371,7 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
         pass
 
 
-class ProbabilisticNaiveExecutionTimeModel(ExecutionTimeModel):
+class NaiveExecutionTimeModel(ExecutionTimeModel):
     """
     Returns execution times sampled from a simple distribution.
     """
@@ -392,7 +392,7 @@ class ProbabilisticNaiveExecutionTimeModel(ExecutionTimeModel):
         return cls(data["exec_time"].to_numpy())
 
     def __init__(self, execution_times: npt.NDArray):
-        super(ProbabilisticNaiveExecutionTimeModel, self).__init__()
+        super(NaiveExecutionTimeModel, self).__init__()
         self._exec_times = execution_times
         self._rng = np.random.default_rng()
 
@@ -425,6 +425,50 @@ class ProbabilisticNaiveExecutionTimeModel(ExecutionTimeModel):
         pass
 
 
+class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
+    def __init__(
+        self,
+        execution_times: npt.NDArray,
+        dist: stats.rv_continuous = stats.exponnorm,
+    ):
+        super(FittedNaiveExecutionTimeModel, self).__init__(
+            execution_times,
+        )
+
+        *args, loc, scale = dist.fit(self._exec_times)
+        self._dist: stats.rv_continuous = dist.freeze(loc=loc, scale=scale, *args)
+        self._dist.random_state = self._rng
+
+    def get_model_params(self) -> Dict[str, Any]:
+        return {
+            "distribution": self._dist.__class__.__name__,
+            "execution_time_seconds": {
+                "mean": float(self._dist.mean()),
+                "std": float(self._dist.std()),
+            },
+        }
+
+    def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
+        # no-op
+        return self
+
+    def get_impairment_score(self) -> float:
+        return 0.0
+
+    def get_execution_time(self) -> float:
+        return float(self._dist.rvs())
+
+    def get_expected_execution_time(self) -> float:
+        return self._dist.mean()
+
+    def state_info(self) -> Dict[str, Any]:
+        return {}
+
+    def reset(self) -> None:
+        # no-op
+        pass
+
+
 class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     """
     Implementation of an execution time model which returns execution times
@@ -442,6 +486,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             transition_fade_distance=transition_fade_distance,
         )
 
+        # noinspection PyArgumentList
         return cls(
             *args,
             data=data,

@@ -36,7 +36,8 @@ from .timings import (
     TheoreticalExecutionTimeModel,
     preprocess_data,
     ConstantExecutionTimeModel,
-    ProbabilisticNaiveExecutionTimeModel,
+    NaiveExecutionTimeModel,
+    FittedNaiveExecutionTimeModel,
 )
 
 __all__ = [
@@ -54,7 +55,8 @@ __all__ = [
     "RegularFrameSamplingModel",
     "AperiodicFrameSamplingModel",
     "ConstantExecutionTimeModel",
-    "ProbabilisticNaiveExecutionTimeModel",
+    "NaiveExecutionTimeModel",
+    "FittedNaiveExecutionTimeModel",
 ]
 
 

@@ -80,8 +80,9 @@ from ..common_cli import enable_logging
         [
             "empirical",
             "theoretical",
+            "constant",
             "naive",
-            "probabilistic-naive",
+            "fitted-naive",
         ],
         case_sensitive=True,
     ),
@@ -92,9 +93,11 @@ from ..common_cli import enable_logging
     "\b\n"
     "\t- 'empirical' samples directly from the underlying data.\n"
     "\t- 'theoretical' first fits distributions to the data and then samples.\n"
-    "\t- 'naive' uses a constant execution time equal to the mean execution time "
+    "\t- 'constant' uses a constant execution time equal to the mean execution time "
     "of the underlying data.\n"
-    "\t - 'probabilistic-naive' samples the underlying data without any grouping\n"
+    "\t - 'naive' samples the underlying data without any grouping\n"
+    "\t - 'fitted-naive' does the same as 'naive' but first fits a distribution to "
+    "the data\n"
     "\t\n",
 )
 @click.option(
@@ -152,7 +155,13 @@ def edgedroid_client(
     trace: str,
     truncate: int,
     fade_distance: int,
-    timing_model: Literal["empirical", "theoretical", "naive", "probabilistic-naive"],
+    timing_model: Literal[
+        "empirical",
+        "theoretical",
+        "constant",
+        "naive",
+        "fitted-naive",
+    ],
     sampling_strategy: str,
     verbose: bool,
     # step_records_output: Optional[pathlib.Path],
