@@ -37,7 +37,7 @@ from ...models import (
     TheoreticalExecutionTimeModel,
     ZeroWaitFrameSamplingModel,
     ProbabilisticNaiveExecutionTimeModel,
-    NaiveExecutionTimeModel,
+    ConstantExecutionTimeModel,
 )
 
 # from ...models.timings import NaiveExecutionTimeModel
@@ -91,7 +91,7 @@ Initializing EdgeDroid model with:
                 )
             case "naive":
                 timing_model: ExecutionTimeModel = (
-                    NaiveExecutionTimeModel.from_default_data()
+                    ConstantExecutionTimeModel.from_default_data()
                 )
             case "probabilistic-naive":
                 timing_model: ExecutionTimeModel = (

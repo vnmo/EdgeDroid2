@@ -303,7 +303,7 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         pass
 
 
-class NaiveExecutionTimeModel(ExecutionTimeModel):
+class ConstantExecutionTimeModel(ExecutionTimeModel):
     """
     Returns a constant execution time.
     """
@@ -342,7 +342,7 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
         return cls(exec_times.mean())
 
     def __init__(self, execution_time_seconds: float):
-        super(NaiveExecutionTimeModel, self).__init__()
+        super(ConstantExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
 
     def get_model_params(self) -> Dict[str, Any]:

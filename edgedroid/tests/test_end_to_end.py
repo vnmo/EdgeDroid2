@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from .. import data as e_data
 from ..models import EdgeDroidModel, ZeroWaitFrameSamplingModel
-from ..models.timings import NaiveExecutionTimeModel
+from ..models.timings import ConstantExecutionTimeModel
 from gabriel_lego.api import FrameResult, LEGOTask
 
 
@@ -38,7 +38,7 @@ class EndToEndTest(unittest.TestCase):
                 e_data.load_default_frame_probabilities()
             )
 
-            timing_model = NaiveExecutionTimeModel(0)
+            timing_model = ConstantExecutionTimeModel(0)
 
             model = EdgeDroidModel(
                 frame_trace=frameset, frame_model=frame_model, timing_model=timing_model
