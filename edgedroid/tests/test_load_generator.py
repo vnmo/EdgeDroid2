@@ -210,15 +210,13 @@ class TestEmulation(unittest.TestCase):
 
         # invalid model name
         with self.assertRaises(NotImplementedError):
-            StreamSocketEmulation(
-                neuroticism=0.5, trace="test", fade_distance=4, model="foobar"
-            )
+            StreamSocketEmulation(neuroticism=0.5, trace="test", model="foobar")
 
         # test all three models
         for model in ("empirical", "theoretical", "naive"):
             logger.info(f"Trying model: {model}")
             emulation = StreamSocketEmulation(
-                neuroticism=0.5, trace="test", fade_distance=4, model=model
+                neuroticism=0.5, trace="test", model=model
             )
 
             with client_server_sockets(timeout=1.0) as (csock, ssock):

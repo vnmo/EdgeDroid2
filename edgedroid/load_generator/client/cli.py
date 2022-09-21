@@ -64,15 +64,15 @@ from ..common_cli import enable_logging
     "emulation to work.",
     show_default=False,
 )
-@click.option(
-    "-f",
-    "--fade-distance",
-    type=int,
-    default=8,
-    show_default=True,
-    help="Distance, in number of steps, after which the model forgets the "
-    "most recent transition.",
-)
+# @click.option(
+#     "-f",
+#     "--fade-distance",
+#     type=int,
+#     default=8,
+#     show_default=True,
+#     help="Distance, in number of steps, after which the model forgets the "
+#     "most recent transition.",
+# )
 @click.option(
     "-m",
     "--timing-model",
@@ -154,7 +154,7 @@ def edgedroid_client(
     neuroticism: float,
     trace: str,
     truncate: int,
-    fade_distance: int,
+    # fade_distance: int,
     timing_model: Literal[
         "empirical",
         "theoretical",
@@ -194,7 +194,6 @@ def edgedroid_client(
     emulation = StreamSocketEmulation(
         neuroticism=neuroticism,
         trace=trace,
-        fade_distance=fade_distance,
         model=timing_model,
         sampling=sampling_strategy,
         truncate=truncate,

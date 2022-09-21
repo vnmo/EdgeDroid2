@@ -83,16 +83,19 @@ class TestDataPreprocessing(TestCase):
         # test for transitions
 
         delays = [1, 2, 3, 1, 2, 1, 3, 2]
-        transitions = [
-            Transition.NONE.value,
-            Transition.NONE.value,
-            Transition.L2H.value,
-            Transition.L2H.value,
-            Transition.H2L.value,
-            Transition.L2H.value,
-            Transition.H2L.value,
-            Transition.L2H.value,
-        ]
+        transitions = np.array(
+            [
+                Transition.NONE.value,
+                Transition.NONE.value,
+                Transition.L2H.value,
+                Transition.L2H.value,
+                Transition.H2L.value,
+                Transition.L2H.value,
+                Transition.H2L.value,
+                Transition.L2H.value,
+            ],
+            dtype=object,
+        )
 
         imp_bins = arrays.IntervalArray.from_breaks(
             [0, 1, 2, 3, np.inf], closed="right"
@@ -147,10 +150,11 @@ class TestDataPreprocessing(TestCase):
 
 class TestModels(unittest.TestCase):
     def setUp(self) -> None:
-        self.fade_distance = 8
+        # self.fade_distance = 8
         raw_data_params = load_default_exec_time_data()
         self.data = preprocess_data(
-            *raw_data_params, transition_fade_distance=self.fade_distance
+            *raw_data_params,
+            # transition_fade_distance=self.fade_distance,
         )
         self.raw_data, *_ = raw_data_params
 
@@ -180,22 +184,22 @@ class TestModels(unittest.TestCase):
             prev_state = model_state
 
     def test_states_step_by_step(self):
-        for mcls in tqdm((EmpiricalExecutionTimeModel, TheoreticalExecutionTimeModel)):
-            for run_id, raw_df in tqdm(self.raw_data.groupby("run_id")):
-                neuro = raw_df.iloc[0]["neuroticism"]
+        for run_id, raw_df in tqdm(self.raw_data.groupby("run_id")):
+            neuro = raw_df.iloc[0]["neuroticism"]
 
-                model = mcls(
-                    self.data,
-                    neuroticism=neuro,
-                    transition_fade_distance=self.fade_distance,
-                )
+            model = EmpiricalExecutionTimeModel(
+                self.data,
+                neuroticism=neuro,
+                state_checks_enabled=False,
+                # transition_fade_distance=self.fade_distance,
+            )
 
-                ttfs = raw_df.ttf.shift().fillna(0).to_numpy()
-                states = (
-                    self.data[self.data.run_id == run_id]
-                    .drop(columns=["next_exec_time", "run_id"])
-                    .copy()
-                )
+            ttfs = raw_df.ttf.shift().fillna(0).to_numpy()
+            states = (
+                self.data[self.data.run_id == run_id]
+                .drop(columns=["next_exec_time", "run_id"])
+                .copy()
+            )
 
-                states["seq"] = np.arange(1, len(states.index) + 1)
-                self._test_model_states(model, ttfs, states.to_dict("records"))
+            states["seq"] = np.arange(1, len(states.index) + 1)
+            self._test_model_states(model, ttfs, states.to_dict("records"))

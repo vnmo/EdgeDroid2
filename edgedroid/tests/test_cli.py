@@ -46,7 +46,7 @@ def run_client(
         emulation = StreamSocketEmulation(
             neuroticism=0.5,
             trace=task,
-            fade_distance=8,
+            # fade_distance=8,
             model="fitted-naive",
             sampling="ideal",
             truncate=truncate,

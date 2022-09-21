@@ -49,7 +49,6 @@ class StreamSocketEmulation:
         self,
         neuroticism: float,
         trace: str,
-        fade_distance: int,
         model: Literal[
             "theoretical",
             "empirical",
@@ -66,7 +65,6 @@ class StreamSocketEmulation:
             f"""
 Initializing EdgeDroid model with:
 - {neuroticism=:0.2f}
-- {fade_distance=:d}
 - {trace=} {trunc_log}
 - {model=}
 - {sampling=}
@@ -78,18 +76,14 @@ Initializing EdgeDroid model with:
 
         match model:
             case "theoretical":
-                timing_model: ExecutionTimeModel = (
-                    TheoreticalExecutionTimeModel.from_default_data(
-                        neuroticism=neuroticism,
-                        transition_fade_distance=fade_distance,
-                    )
+                timing_model: ExecutionTimeModel = TheoreticalExecutionTimeModel.from_default_data(
+                    neuroticism=neuroticism,
+                    # transition_fade_distance=fade_distance,
                 )
             case "empirical":
-                timing_model: ExecutionTimeModel = (
-                    EmpiricalExecutionTimeModel.from_default_data(
-                        neuroticism=neuroticism,
-                        transition_fade_distance=fade_distance,
-                    )
+                timing_model: ExecutionTimeModel = EmpiricalExecutionTimeModel.from_default_data(
+                    neuroticism=neuroticism,
+                    # transition_fade_distance=fade_distance,
                 )
             case "constant":
                 timing_model: ExecutionTimeModel = (

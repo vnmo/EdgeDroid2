@@ -27,9 +27,6 @@ from pandas import arrays
 from scipy import stats
 
 
-# TODO: fix tests!
-
-
 def _serialize_interval(interval: pd.Interval) -> Dict[str, float | bool]:
     left_open = interval.open_left
     right_open = interval.open_right
@@ -61,7 +58,7 @@ class ModelException(Exception):
 class Transition(str, enum.Enum):
     H2L = "Higher2Lower"
     L2H = "Lower2Higher"
-    # NONE = "NoTransition"
+    NONE = "NoTransition"
 
 
 def preprocess_data(
@@ -137,7 +134,9 @@ def preprocess_data(
             df["prev_impairment"] > df["impairment"], "transition"
         ] = Transition.H2L.value
 
-        df["transition"] = df["transition"].fillna(method="ffill")
+        df["transition"] = (
+            df["transition"].fillna(method="ffill").fillna(Transition.NONE.value)
+        )
 
         processed_dfs.append(df)
 
@@ -472,6 +471,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self,
         data: pd.DataFrame,
         neuroticism: float,
+        state_checks_enabled: bool = True,
     ):
         """
         Parameters
@@ -491,7 +491,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._neuro_bins = data["neuroticism"].unique()
 
         min_imp, max_imp = data["impairment"].min(), data["impairment"].max()
-        min_dur = data["duration"].min()
+        self._min_dur = data["duration"].min()
 
         # first, we filter on neuroticism
         data = data[data["neuroticism"].array.contains(neuroticism)]
@@ -501,7 +501,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         # next, prepare views
         self._data_views = {}
         for (imp, dur), df in data.groupby(["impairment", "duration"]):
-            if len(df.index) == 0:
+            if (len(df.index) == 0) and state_checks_enabled:
                 raise ModelException(
                     f"Combination of impairment {imp} and duration "
                     f"{dur} has no data!"
@@ -511,15 +511,17 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
             # views for the beginning of the task, no transition
             # for that, we just use all the data for impairment and duration
-            self._data_views[(imp, dur, None)] = exec_times
+            self._data_views[(imp, dur, Transition.NONE.value)] = exec_times
 
-            if dur > min_dur:
+            if dur > self._min_dur:
                 # transition only matters for the first level of duration
                 self._data_views[(imp, dur, Transition.L2H.value)] = exec_times
                 self._data_views[(imp, dur, Transition.H2L.value)] = exec_times
             else:
                 for tran, tdf in df.groupby("transition"):
-                    if len(tdf.index) == 0:
+                    if tran == Transition.NONE.value:
+                        continue
+                    elif (len(tdf.index) == 0) and state_checks_enabled:
                         if (
                             ((imp == min_imp) and (tran == Transition.H2L.value))
                             or ((imp == max_imp) and (tran == Transition.L2H.value))
@@ -551,7 +553,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._imp_memory = deque()
         self._seq = 0
         self._ttf = 0.0
-        self._transition: Optional[str] = None
+        self._transition = Transition.NONE.value
         # self.reset()
 
         # random state
@@ -580,7 +582,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._imp_memory.clear()
         self._seq = 0
         self._ttf = 0.0
-        self._transition = None
+        self._transition = Transition.NONE.value
         self._rng = np.random.default_rng()
 
     def advance(self, ttf: float | int) -> TTimingModel:
@@ -591,7 +593,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             # not enough steps to calculate a transition
             # must be first step
             self._seq = 0
-            self._transition = None
+            self._transition = Transition.NONE.value
         elif self._imp_memory[-1] < new_imp:
             self._imp_memory.clear()
             self._transition = Transition.L2H.value
@@ -613,10 +615,13 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             self._duration_bins.contains(len(self._imp_memory))
         ][0]
 
+        if binned_duration == self._min_dur:
+            transition = Transition.NONE.value
+        else:
+            transition = self._transition
+
         try:
-            return self._data_views[
-                (self._imp_memory[-1], binned_duration, self._transition)
-            ]
+            return self._data_views[(self._imp_memory[-1], binned_duration, transition)]
         except KeyError:
             raise ModelException(
                 f"No data for model state: {self.state_info()}! "
@@ -670,6 +675,7 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         data: pd.DataFrame,
         neuroticism: float,
         distribution: stats.rv_continuous = stats.exponnorm,
+        state_checks_enabled: bool = True,
     ):
         """
         Parameters
@@ -685,7 +691,9 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             corresponds to the Exponentially Modified Gaussian.
         """
 
-        super(TheoreticalExecutionTimeModel, self).__init__(data, neuroticism)
+        super(TheoreticalExecutionTimeModel, self).__init__(
+            data, neuroticism, state_checks_enabled=state_checks_enabled
+        )
 
         # at this point, the views have been populated with data according to
         # the binnings
@@ -720,10 +728,13 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             self._duration_bins.contains(len(self._imp_memory))
         ][0]
 
+        if binned_duration == self._min_dur:
+            transition = Transition.NONE.value
+        else:
+            transition = self._transition
+
         try:
-            return self._dists[
-                (self._imp_memory[-1], binned_duration, self._transition)
-            ]
+            return self._dists[(self._imp_memory[-1], binned_duration, transition)]
         except KeyError:
             raise ModelException(
                 f"No data for model state: {self.state_info()}! "
