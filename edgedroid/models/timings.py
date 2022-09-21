@@ -27,6 +27,9 @@ from pandas import arrays
 from scipy import stats
 
 
+# TODO: fix tests!
+
+
 def _serialize_interval(interval: pd.Interval) -> Dict[str, float | bool]:
     left_open = interval.open_left
     right_open = interval.open_right
@@ -58,7 +61,7 @@ class ModelException(Exception):
 class Transition(str, enum.Enum):
     H2L = "Higher2Lower"
     L2H = "Lower2Higher"
-    NONE = "NoTransition"
+    # NONE = "NoTransition"
 
 
 def preprocess_data(
@@ -66,7 +69,7 @@ def preprocess_data(
     neuro_bins: arrays.IntervalArray | pd.IntervalIndex,
     impair_bins: arrays.IntervalArray | pd.IntervalIndex,
     duration_bins: arrays.IntervalArray | pd.IntervalIndex,
-    transition_fade_distance: Optional[int] = None,
+    # transition_fade_distance: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Processes a DataFrame with raw execution time data into a DataFrame
@@ -90,27 +93,25 @@ def preprocess_data(
         Bins to use for time-to-feedback (impairment).
     duration_bins
         Bins to use for sequences of same impairment.
-    transition_fade_distance
-        Distance, in number of steps, from a transition after which to stop tagging
-        steps wrt the latest transition.
 
     Returns
     -------
         A DataFrame.
     """
 
-    data = exec_time_data.copy()
+    proc_data = exec_time_data.copy()
 
     for col in ("run_id", "neuroticism", "exec_time", "ttf"):
-        if col not in data.columns:
+        if col not in proc_data.columns:
             raise ModelException(f"Base data missing required column: {col}")
 
-    data["neuroticism_raw"] = data["neuroticism"]
-    data["neuroticism"] = pd.cut(data["neuroticism"], pd.IntervalIndex(neuro_bins))
+    proc_data["neuroticism_raw"] = proc_data["neuroticism"]
+    proc_data["neuroticism"] = pd.cut(
+        proc_data["neuroticism"], pd.IntervalIndex(neuro_bins)
+    )
 
     processed_dfs = deque()
-    for run_id, df in data.groupby("run_id"):
-        # df = df.copy()
+    for run_id, df in proc_data.groupby("run_id"):
         df = df.copy()
         df["ttf"] = df["ttf"].shift().fillna(0)
 
@@ -119,7 +120,7 @@ def preprocess_data(
 
         # df["next_exec_time"] = df["exec_time"].shift(-1)
         df["prev_impairment"] = df["impairment"].shift()
-        df["transition"] = Transition.NONE.value
+        # df["transition"] = Transition.NONE.value
 
         # for each segment with the same impairment, count the number of steps
         # (starting from 1)
@@ -128,57 +129,31 @@ def preprocess_data(
         )
         df["duration"] = diff_imp_groups.cumcount() + 1
 
-        def tag_transition(df: pd.DataFrame) -> pd.DataFrame:
-            # df is a chunk of the dataframe corresponding to a contiguous segment of
-            # steps with the same impairment
+        df["transition"] = None
+        df.loc[
+            df["prev_impairment"] < df["impairment"], "transition"
+        ] = Transition.L2H.value
+        df.loc[
+            df["prev_impairment"] > df["impairment"], "transition"
+        ] = Transition.H2L.value
 
-            result = pd.DataFrame(index=df.index, columns=["transition"])
-            result["transition"] = Transition.NONE.value
-
-            mask = np.zeros(len(df.index), dtype=bool)
-            mask[:transition_fade_distance] = True
-
-            # hack to check if first element is none
-            if df["prev_impairment"].astype(str).iloc[0] == "nan":
-                # result[:transition_fade_distance] = Transition.NONE.value
-                pass
-            elif df["impairment"].iloc[0] > df["prev_impairment"].iloc[0]:
-                result.loc[mask, "transition"] = Transition.L2H.value
-            else:
-                result.loc[mask, "transition"] = Transition.H2L.value
-
-            # after a specific distance, the transition information "fades" and the
-            # transition stops having an effect on the data
-            # result.iloc[transition_fade_distance:]["transition"] =
-            # Transition.NONE.value
-            return result
-
-        df["transition"] = diff_imp_groups.apply(tag_transition)
-        df["duration"] = (
-            df.groupby(
-                (
-                    df["transition"].ne(df["transition"].shift())
-                    | df["impairment"].ne(df["prev_impairment"])
-                ).cumsum()
-            ).cumcount()
-            + 1
-        )
+        df["transition"] = df["transition"].fillna(method="ffill")
 
         processed_dfs.append(df)
 
-    data = pd.concat(processed_dfs, ignore_index=False)
+    proc_data = pd.concat(processed_dfs, ignore_index=False)
 
     # coerce some types for proper functionality
-    data["transition"] = data["transition"].astype("category")
-    data["neuroticism"] = data["neuroticism"].astype(pd.IntervalDtype())
-    data["impairment"] = data["impairment"].astype(pd.IntervalDtype())
-    data["duration_raw"] = data["duration"]
-    data["duration"] = pd.cut(data["duration"], pd.IntervalIndex(duration_bins)).astype(
-        pd.IntervalDtype()
-    )
-    data = data.drop(columns="prev_impairment")
+    proc_data["transition"] = proc_data["transition"].astype("category")
+    proc_data["neuroticism"] = proc_data["neuroticism"].astype(pd.IntervalDtype(float))
+    proc_data["impairment"] = proc_data["impairment"].astype(pd.IntervalDtype(float))
+    proc_data["duration_raw"] = proc_data["duration"]
+    proc_data["duration"] = pd.cut(
+        proc_data["duration"], pd.IntervalIndex(duration_bins)
+    ).astype(pd.IntervalDtype(float))
+    proc_data = proc_data.drop(columns="prev_impairment")
 
-    return data
+    return proc_data
 
 
 def winsorize_series(e: pd.Series) -> npt.NDArray:
@@ -326,7 +301,7 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
 
         data = preprocess_data(
             *e_data.load_default_exec_time_data(),
-            transition_fade_distance=4,
+            # transition_fade_distance=4,
         )
 
         # only grab execution times for steps that
@@ -334,12 +309,12 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
         # 2. are not marked as being close to a transition.
         data = data[
             (data["impairment"] == data["impairment"].min())
-            & (data["transition"] == Transition.NONE.value)
+            & (data["duration"] != data["duration"].min())
         ]
 
         # clean outliers
-        exec_times = winsorize_series(data["next_exec_time"])
-        return cls(exec_times.mean())
+        # exec_times = winsorize_series(data["next_exec_time"])
+        return cls(data["next_exec_time"].mean())
 
     def __init__(self, execution_time_seconds: float):
         super(ConstantExecutionTimeModel, self).__init__()
@@ -477,13 +452,12 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     @classmethod
     def from_default_data(
-        cls, neuroticism: float, *args, transition_fade_distance: int = 8, **kwargs
+        cls, neuroticism: float, *args, **kwargs
     ) -> ExecutionTimeModel:
         from .. import data as e_data
 
         data = preprocess_data(
             *e_data.load_default_exec_time_data(),
-            transition_fade_distance=transition_fade_distance,
         )
 
         # noinspection PyArgumentList
@@ -491,7 +465,6 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             *args,
             data=data,
             neuroticism=neuroticism,
-            transition_fade_distance=transition_fade_distance,
             **kwargs,
         )
 
@@ -499,7 +472,6 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self,
         data: pd.DataFrame,
         neuroticism: float,
-        transition_fade_distance: Optional[int] = None,
     ):
         """
         Parameters
@@ -512,7 +484,14 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         """
 
         super().__init__()
+
+        # unique bins (interval arrays)
+        self._duration_bins = data["duration"].unique()
+        self._impairment_bins = data["impairment"].unique()
         self._neuro_bins = data["neuroticism"].unique()
+
+        min_imp, max_imp = data["impairment"].min(), data["impairment"].max()
+        min_dur = data["duration"].min()
 
         # first, we filter on neuroticism
         data = data[data["neuroticism"].array.contains(neuroticism)]
@@ -520,14 +499,43 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._neuro_binned = data["neuroticism"].iloc[0]
 
         # next, prepare views
-        self._data_views = (
-            data.groupby(
-                ["impairment", "duration", "transition"], observed=True, dropna=True
-            )["next_exec_time"]
-            .apply(winsorize_series)
-            .to_dict()
-            # .apply(lambda x: x.dropna().to_numpy()).to_dict()
-        )
+        self._data_views = {}
+        for (imp, dur), df in data.groupby(["impairment", "duration"]):
+            if len(df.index) == 0:
+                raise ModelException(
+                    f"Combination of impairment {imp} and duration "
+                    f"{dur} has no data!"
+                )
+
+            exec_times = df["next_exec_time"].to_numpy()
+
+            # views for the beginning of the task, no transition
+            # for that, we just use all the data for impairment and duration
+            self._data_views[(imp, dur, None)] = exec_times
+
+            if dur > min_dur:
+                # transition only matters for the first level of duration
+                self._data_views[(imp, dur, Transition.L2H.value)] = exec_times
+                self._data_views[(imp, dur, Transition.H2L.value)] = exec_times
+            else:
+                for tran, tdf in df.groupby("transition"):
+                    if len(tdf.index) == 0:
+                        if (
+                            ((imp == min_imp) and (tran == Transition.H2L.value))
+                            or ((imp == max_imp) and (tran == Transition.L2H.value))
+                            or ((imp != min_imp) and (imp != max_imp))
+                        ):
+                            raise ModelException(
+                                f"Combination of impairment {imp}, duration "
+                                f"{dur}, and transition {tran} has no data!"
+                            )
+
+                        # if we reach here it's a state which is impossible to reach,
+                        # so we don't need to store anything
+                    else:
+                        self._data_views[(imp, dur, tran)] = tdf[
+                            "next_exec_time"
+                        ].to_numpy()
 
         # calculate imp score range
         _min_exec_time_mean = np.inf
@@ -540,22 +548,11 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._max_score = _max_exec_time_mean - _min_exec_time_mean
         self._score_offset = _min_exec_time_mean
 
-        # unique bins (interval arrays)
-        self._duration_bins = data["duration"].unique()
-        self._impairment_bins = data["impairment"].unique()
-
-        # initial state
-        self._fade_distance = (
-            transition_fade_distance
-            if transition_fade_distance is not None
-            else float("inf")
-        )
-
         self._imp_memory = deque()
         self._seq = 0
         self._ttf = 0.0
-        self._transition = None
-        self.reset()
+        self._transition: Optional[str] = None
+        # self.reset()
 
         # random state
         self._rng = np.random.default_rng()
@@ -564,7 +561,6 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         return {
             "neuroticism": float(self._neuroticism),
             "binned_neuroticism": _serialize_interval(self._neuro_binned),
-            "fade_distance": int(self._fade_distance),
             "neuro_bins": [_serialize_interval(iv) for iv in self._neuro_bins],
             "impairment_bins": [
                 _serialize_interval(iv) for iv in self._impairment_bins
@@ -585,6 +581,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._seq = 0
         self._ttf = 0.0
         self._transition = None
+        self._rng = np.random.default_rng()
 
     def advance(self, ttf: float | int) -> TTimingModel:
         self._ttf = ttf
@@ -594,19 +591,13 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
             # not enough steps to calculate a transition
             # must be first step
             self._seq = 0
-            self._transition = Transition.NONE
+            self._transition = None
         elif self._imp_memory[-1] < new_imp:
             self._imp_memory.clear()
-            self._transition = Transition.L2H
+            self._transition = Transition.L2H.value
         elif self._imp_memory[-1] > new_imp:
             self._imp_memory.clear()
-            self._transition = Transition.H2L
-        elif (
-            len(self._imp_memory) + 1 > self._fade_distance
-            and self._transition != Transition.NONE
-        ):
-            self._imp_memory.clear()
-            self._transition = Transition.NONE
+            self._transition = Transition.H2L.value
 
         self._seq += 1
         self._imp_memory.append(new_imp)
@@ -624,7 +615,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
         try:
             return self._data_views[
-                (self._imp_memory[-1], binned_duration, self._transition.value)
+                (self._imp_memory[-1], binned_duration, self._transition)
             ]
         except KeyError:
             raise ModelException(
@@ -656,7 +647,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
                 "neuroticism_raw": self._neuroticism,
                 "ttf": self._ttf,
                 "impairment": self._imp_memory[-1],
-                "transition": self._transition.value,
+                "transition": self._transition,
                 "duration": binned_duration,
                 "duration_raw": len(self._imp_memory),
             }
@@ -679,7 +670,6 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         data: pd.DataFrame,
         neuroticism: float,
         distribution: stats.rv_continuous = stats.exponnorm,
-        transition_fade_distance: Optional[int] = None,
     ):
         """
         Parameters
@@ -695,9 +685,7 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
             corresponds to the Exponentially Modified Gaussian.
         """
 
-        super(TheoreticalExecutionTimeModel, self).__init__(
-            data, neuroticism, transition_fade_distance
-        )
+        super(TheoreticalExecutionTimeModel, self).__init__(data, neuroticism)
 
         # at this point, the views have been populated with data according to
         # the binnings
@@ -734,7 +722,7 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
 
         try:
             return self._dists[
-                (self._imp_memory[-1], binned_duration, self._transition.value)
+                (self._imp_memory[-1], binned_duration, self._transition)
             ]
         except KeyError:
             raise ModelException(
