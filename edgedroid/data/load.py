@@ -14,7 +14,7 @@
 
 from importlib import resources
 from importlib.resources import as_file
-from typing import List, NamedTuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
@@ -53,14 +53,9 @@ _default_traces = {
 }
 
 
-class ExecTimeDataParams(NamedTuple):
-    base_data: pd.DataFrame
-    neuroticism_bins: arrays.IntervalArray
-    impairment_bins: arrays.IntervalArray
-    duration_bins: arrays.IntervalArray
-
-
-def load_default_exec_time_data() -> ExecTimeDataParams:
+def load_default_exec_time_data() -> Tuple[
+    pd.DataFrame, arrays.IntervalArray, arrays.IntervalArray, arrays.IntervalArray
+]:
     from . import resources as edgedroid_resources
 
     data_file = resources.files(edgedroid_resources).joinpath(
@@ -72,7 +67,7 @@ def load_default_exec_time_data() -> ExecTimeDataParams:
     bins_map = np.load(bins_file)
 
     with as_file(data_file) as fp:
-        return ExecTimeDataParams(
+        return (
             pd.read_parquet(fp),
             arrays.IntervalArray.from_breaks(bins_map["neuroticism"], closed="left"),
             arrays.IntervalArray.from_breaks(bins_map["impairment"], closed="left"),

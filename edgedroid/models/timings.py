@@ -17,7 +17,6 @@ from __future__ import annotations
 import abc
 import copy
 import enum
-import warnings
 from collections import deque
 from typing import Any, Dict, Iterator, Optional, TypeVar
 
@@ -53,10 +52,6 @@ class ModelException(Exception):
     Exception raised during model execution.
     """
 
-    pass
-
-
-class ModelWarning(RuntimeWarning):
     pass
 
 
@@ -482,34 +477,12 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     @classmethod
     def from_default_data(
-        cls,
-        neuroticism: float,
-        *args,
-        transition_fade_distance: int = 8,
-        neuroticism_bins: Optional[arrays.IntervalArray] = None,
-        impairment_bins: Optional[arrays.IntervalArray] = None,
-        duration_bins: Optional[arrays.IntervalArray] = None,
-        **kwargs,
+        cls, neuroticism: float, *args, transition_fade_distance: int = 8, **kwargs
     ) -> ExecutionTimeModel:
         from .. import data as e_data
 
-        data_params = e_data.load_default_exec_time_data()
-
         data = preprocess_data(
-            exec_time_data=data_params.base_data,
-            neuro_bins=(
-                data_params.neuroticism_bins
-                if neuroticism_bins is None
-                else neuroticism_bins
-            ),
-            impair_bins=(
-                data_params.impairment_bins
-                if impairment_bins is None
-                else impairment_bins
-            ),
-            duration_bins=(
-                data_params.duration_bins if duration_bins is None else duration_bins
-            ),
+            *e_data.load_default_exec_time_data(),
             transition_fade_distance=transition_fade_distance,
         )
 
@@ -550,27 +523,11 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._data_views = (
             data.groupby(
                 ["impairment", "duration", "transition"], observed=True, dropna=True
-            )["next_exec_time"].apply(winsorize_series)
-            # .to_dict()
+            )["next_exec_time"]
+            .apply(winsorize_series)
+            .to_dict()
             # .apply(lambda x: x.dropna().to_numpy()).to_dict()
         )
-
-        # check that all states have data!
-        counts: pd.Series = self._data_views.apply(lambda x: x.size)
-        counts_few = counts[(counts < 5) & (counts > 0)]  # FIXME: magic number!
-        counts_zero = counts[counts < 1]
-
-        if counts_zero.size > 0:
-            raise ModelException(
-                f"Encountered states with no data after preprocessing!\n\n"
-                f"{counts_zero.to_string()}\n\n"
-            )
-        elif counts_few.size > 0:
-            warnings.warn(
-                "Encountered states with < 5 samples after preprocessing!\n\n"
-                f"{counts_few.to_string()}\n\n",
-                category=ModelWarning,
-            )
 
         # calculate imp score range
         _min_exec_time_mean = np.inf
