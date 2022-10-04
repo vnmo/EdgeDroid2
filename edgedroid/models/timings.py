@@ -419,9 +419,9 @@ class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
         return {
             "execution_time_seconds": {
                 "distribution": self._dist.__class__.__name__,
-                "loc"         : self._loc,
-                "scale"       : self._scale,
-                "other"       : list(self._dist_args),
+                "loc": self._loc,
+                "scale": self._scale,
+                "other": list(self._dist_args),
             },
         }
 
@@ -454,7 +454,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     @classmethod
     def from_default_data(
-            cls, neuroticism: float | None, *args, **kwargs
+        cls, neuroticism: float | None, *args, **kwargs
     ) -> ExecutionTimeModel:
         from .. import data as e_data
 
@@ -471,10 +471,10 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         )
 
     def __init__(
-            self,
-            data: pd.DataFrame,
-            neuroticism: float | None,
-            state_checks_enabled: bool = True,
+        self,
+        data: pd.DataFrame,
+        neuroticism: float | None,
+        state_checks_enabled: bool = True,
     ):
         """
         Parameters
@@ -568,7 +568,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def get_model_params(self) -> Dict[str, Any]:
         return {
-            "neuroticism"       : (
+            "neuroticism": (
                 float(self._neuroticism) if self._neuroticism is not None else None
             ),
             "binned_neuroticism": (
@@ -576,12 +576,11 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
                 if self._neuro_binned is not None
                 else None
             ),
-            "neuro_bins"        : [_serialize_interval(iv) for iv in self._neuro_bins],
-            "impairment_bins"   : [
+            "neuro_bins": [_serialize_interval(iv) for iv in self._neuro_bins],
+            "impairment_bins": [
                 _serialize_interval(iv) for iv in self._impairment_bins
             ],
-            "duration_bins"     : [_serialize_interval(iv) for iv in
-                                   self._duration_bins],
+            "duration_bins": [_serialize_interval(iv) for iv in self._duration_bins],
         }
 
     def copy(self: TTimingModel) -> TTimingModel:
@@ -685,11 +684,11 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     """
 
     def __init__(
-            self,
-            data: pd.DataFrame,
-            neuroticism: float | None,
-            distribution: stats.rv_continuous = stats.exponnorm,
-            state_checks_enabled: bool = True,
+        self,
+        data: pd.DataFrame,
+        neuroticism: float | None,
+        distribution: stats.rv_continuous = stats.exponnorm,
+        state_checks_enabled: bool = True,
     ):
         """
         Parameters
