@@ -18,13 +18,13 @@ import abc
 import copy
 import enum
 from collections import deque
+from typing import Any, Dict, Iterator, TypeVar
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from pandas import arrays
 from scipy import stats
-from typing import Any, Dict, Iterator, TypeVar
 
 
 def _serialize_interval(interval: pd.Interval) -> Dict[str, float | bool]:
