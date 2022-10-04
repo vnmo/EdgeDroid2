@@ -18,13 +18,13 @@ import abc
 import copy
 import enum
 from collections import deque
-from typing import Any, Dict, Iterator, Optional, TypeVar
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from pandas import arrays
 from scipy import stats
+from typing import Any, Dict, Iterator, TypeVar
 
 
 def _serialize_interval(interval: pd.Interval) -> Dict[str, float | bool]:
@@ -409,16 +409,19 @@ class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
             execution_times,
         )
 
-        *args, loc, scale = dist.fit(self._exec_times)
-        self._dist: stats.rv_continuous = dist.freeze(loc=loc, scale=scale, *args)
+        *self._dist_args, self._loc, self._scale = dist.fit(self._exec_times)
+        self._dist: stats.rv_continuous = dist.freeze(
+            loc=self._loc, scale=self._scale, *self._dist_args
+        )
         self._dist.random_state = self._rng
 
     def get_model_params(self) -> Dict[str, Any]:
         return {
-            "distribution": self._dist.__class__.__name__,
             "execution_time_seconds": {
-                "mean": float(self._dist.mean()),
-                "std": float(self._dist.std()),
+                "distribution": self._dist.__class__.__name__,
+                "loc"         : self._loc,
+                "scale"       : self._scale,
+                "other"       : list(self._dist_args),
             },
         }
 
@@ -451,7 +454,7 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     @classmethod
     def from_default_data(
-        cls, neuroticism: float, *args, **kwargs
+            cls, neuroticism: float | None, *args, **kwargs
     ) -> ExecutionTimeModel:
         from .. import data as e_data
 
@@ -468,10 +471,10 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         )
 
     def __init__(
-        self,
-        data: pd.DataFrame,
-        neuroticism: float,
-        state_checks_enabled: bool = True,
+            self,
+            data: pd.DataFrame,
+            neuroticism: float | None,
+            state_checks_enabled: bool = True,
     ):
         """
         Parameters
@@ -494,9 +497,13 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
         self._min_dur = data["duration"].min()
 
         # first, we filter on neuroticism
-        data = data[data["neuroticism"].array.contains(neuroticism)]
+        if neuroticism is not None:
+            data = data[data["neuroticism"].array.contains(neuroticism)]
+            self._neuro_binned = data["neuroticism"].iloc[0]
+        else:
+            self._neuro_binned = None
+
         self._neuroticism = neuroticism
-        self._neuro_binned = data["neuroticism"].iloc[0]
 
         # next, prepare views
         self._data_views = {}
@@ -561,13 +568,20 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     def get_model_params(self) -> Dict[str, Any]:
         return {
-            "neuroticism": float(self._neuroticism),
-            "binned_neuroticism": _serialize_interval(self._neuro_binned),
-            "neuro_bins": [_serialize_interval(iv) for iv in self._neuro_bins],
-            "impairment_bins": [
+            "neuroticism"       : (
+                float(self._neuroticism) if self._neuroticism is not None else None
+            ),
+            "binned_neuroticism": (
+                _serialize_interval(self._neuro_binned)
+                if self._neuro_binned is not None
+                else None
+            ),
+            "neuro_bins"        : [_serialize_interval(iv) for iv in self._neuro_bins],
+            "impairment_bins"   : [
                 _serialize_interval(iv) for iv in self._impairment_bins
             ],
-            "duration_bins": [_serialize_interval(iv) for iv in self._duration_bins],
+            "duration_bins"     : [_serialize_interval(iv) for iv in
+                                   self._duration_bins],
         }
 
     def copy(self: TTimingModel) -> TTimingModel:
@@ -671,11 +685,11 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     """
 
     def __init__(
-        self,
-        data: pd.DataFrame,
-        neuroticism: float,
-        distribution: stats.rv_continuous = stats.exponnorm,
-        state_checks_enabled: bool = True,
+            self,
+            data: pd.DataFrame,
+            neuroticism: float | None,
+            distribution: stats.rv_continuous = stats.exponnorm,
+            state_checks_enabled: bool = True,
     ):
         """
         Parameters

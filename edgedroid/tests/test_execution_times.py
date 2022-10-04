@@ -13,7 +13,6 @@
 #  limitations under the License.
 
 import unittest
-from typing import Any, Dict, Sequence
 from unittest import TestCase
 
 import nptyping
@@ -22,6 +21,7 @@ import pandas as pd
 from numpy import testing as nptest
 from pandas import arrays
 from tqdm import tqdm
+from typing import Any, Dict, Sequence
 
 from ..data import *
 from ..models.timings import (
@@ -203,3 +203,16 @@ class TestModels(unittest.TestCase):
 
             states["seq"] = np.arange(1, len(states.index) + 1)
             self._test_model_states(model, ttfs, states.to_dict("records"))
+
+    def test_no_neuroticism(self):
+        rng = np.random.default_rng()
+
+        # just check if setting neuroticism to None causes problems
+        for model_cls in (EmpiricalExecutionTimeModel, TheoreticalExecutionTimeModel):
+            model = model_cls.from_default_data(neuroticism=None)
+
+            for _ in range(100):
+                model.advance((rng.random() * (10.0 - 0.5)) + 0.5).get_execution_time()
+                model.get_model_params()
+                model.state_info()
+                model.get_expected_execution_time()
