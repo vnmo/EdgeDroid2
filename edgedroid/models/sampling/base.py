@@ -19,12 +19,14 @@ import itertools
 import time
 from collections import deque
 from os import PathLike
-from typing import Any, Dict, Iterator, NamedTuple, Sequence
+from typing import Any, Dict, Iterator, NamedTuple, Sequence, Type, TypeVar
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import yaml
+
+from ... import data as e_data
 
 
 class TraceException(Exception):
@@ -198,7 +200,15 @@ class FrameSample(NamedTuple):
     extra: Dict[str, Any]
 
 
+TBaseSampling = TypeVar("TBaseSampling", bound="BaseFrameSamplingModel")
+
+
 class BaseFrameSamplingModel(abc.ABC):
+    @classmethod
+    def from_default_data(cls: Type[TBaseSampling], *args, **kwargs) -> TBaseSampling:
+        probs = e_data.load_default_frame_probabilities()
+        return cls(probabilities=probs, success_tag="success")
+
     def __init__(self, probabilities: pd.DataFrame, success_tag: str = "success"):
         """
         Parameters
@@ -384,6 +394,20 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
     Doesn't sample for a specified period of time at the beginning of each step.
     """
 
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        hold_time_seconds: float,
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        probs = e_data.load_default_frame_probabilities()
+        return cls(
+            probabilities=probs,
+            hold_time_seconds=hold_time_seconds,
+            success_tag="success",
+        )
+
     def __init__(
         self,
         probabilities: pd.DataFrame,
@@ -420,6 +444,20 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
     Samples in constant discrete time intervals. Defaults to zero-wait sampling if
     the time between calls to the step iterator is longer than the sampling interval!
     """
+
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        sampling_interval_seconds: float,
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        probs = e_data.load_default_frame_probabilities()
+        return cls(
+            probabilities=probs,
+            sampling_interval_seconds=sampling_interval_seconds,
+            success_tag="success",
+        )
 
     def __init__(
         self,

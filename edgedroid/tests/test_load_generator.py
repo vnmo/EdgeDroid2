@@ -15,18 +15,19 @@
 from __future__ import annotations
 
 import contextlib
+import itertools
 import queue
 import socket
 import sys
 import unittest
 from functools import wraps
 from threading import Event, Thread
-from typing import Any, Callable, Iterator, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, Optional, Tuple, Type
 
 import numpy as np
-from numpy import testing as nptest
 from gabriel_lego import FrameResult
 from loguru import logger
+from numpy import testing as nptest
 
 from ..data import load_default_trace
 from ..load_generator import common
@@ -52,9 +53,9 @@ def client_server_sockets(
 ) -> Iterator[Tuple[socket.SocketType, socket.SocketType]]:
     logger.info("Opening pair of connected UNIX sockets")
     client, server = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
-    logger.debug(f"Setting socket timeout values: {timeout:0.3f} seconds")
-    client.settimeout(timeout)
-    server.settimeout(timeout)
+    # logger.debug(f"Setting socket timeout values: {timeout:0.3f} seconds")
+    # client.settimeout(timeout)
+    # server.settimeout(timeout)
     try:
         yield client, server
     finally:
@@ -101,6 +102,7 @@ class BytesSocketClient(contextlib.AbstractContextManager, Thread):
 
 
 class TestCommon(unittest.TestCase):
+    # noinspection PyTypeChecker
     @log_test
     def test_stream_packing_frames(self) -> None:
         frames = load_default_trace("test")
@@ -122,6 +124,7 @@ class TestCommon(unittest.TestCase):
                 self.assertEqual(i + 1, recv_seq)
                 nptest.assert_array_equal(frame, recv_img)
 
+    # noinspection PyTypeChecker
     @log_test
     def test_packing_responses(self) -> None:
         rng = np.random.default_rng()
@@ -129,7 +132,6 @@ class TestCommon(unittest.TestCase):
         test_text = "the quick brown fox jumps over the lazy dog"
 
         with contextlib.ExitStack() as stack:
-
             csock, ssock = stack.enter_context(client_server_sockets(timeout=0.250))
             stream = stack.enter_context(
                 contextlib.closing(common.response_stream_unpack(ssock))
@@ -203,62 +205,129 @@ class FrameResultExpecter:
             self._test.assertEqual(FrameResult.LOW_CONFIDENCE, actual)
 
 
-class TestEmulation(unittest.TestCase):
-    def test_emulation_loop(self) -> None:
+class EmulationLoopTestMeta(type):
+    def __new__(mcs, name: str, bases: Tuple[Type], attr_dict: Dict[str, Callable]):
+        def make_test_method(
+            timing_name: str,
+            sampling_name: str,
+            timing_args: Dict[str, Any],
+            sampling_args: Dict[str, Any],
+        ) -> Callable:
+            def __test(self):
+                logger.remove()
+                logger.add(sys.stderr, level="INFO", colorize=True)
+
+                logger.warning(f"Model {timing_name}, sampling {sampling_name}")
+                logger.warning(f"Timing args: {timing_args}")
+                logger.warning(f"Sampling args: {sampling_args}")
+
+                # noinspection PyTypeChecker
+                emulation = StreamSocketEmulation(
+                    trace="test",
+                    model=timing_name,
+                    sampling=sampling_name,
+                    sampling_args=sampling_args,
+                    timing_args=timing_args,
+                )
+
+                with client_server_sockets(timeout=1.0) as (csock, ssock):
+                    server_t = TestServer("test", ssock)
+                    server_t.start()
+                    expecter = FrameResultExpecter(self)
+
+                    def emit_callback(frame: ModelFrame) -> None:
+                        expecter.set_expected(frame.frame_tag)
+                        try:
+                            # callback to check for exceptions in server loop
+                            exc = server_t.get_exc_queue().get_nowait()
+                            raise exc
+                        except queue.Empty:
+                            pass
+
+                    def result_callback(t: bool, i: Any, s: str) -> None:
+                        frame_result = server_t.get_result_queue().get_nowait()
+                        expecter.check_result(frame_result)
+                        try:
+                            # callback to check for exceptions in server loop
+                            exc = server_t.get_exc_queue().get_nowait()
+                            raise exc
+                        except queue.Empty:
+                            pass
+
+                    emulation.emulate(
+                        csock, emit_cb=emit_callback, resp_cb=result_callback
+                    )
+
+                    # close client first, to make sure no exceptions occur in server
+                    csock.close()
+                    try:
+                        # callback to check for exceptions in server loop
+                        exc = server_t.get_exc_queue().get_nowait()
+                        raise exc
+                    except queue.Empty:
+                        pass
+
+                    # should be able to join the server thread here,
+                    # as the client socket
+                    # closing should have triggered the server loop to end gracefully
+                    server_t.join(timeout=0.1)
+                    ssock.close()
+
+                    # finally, output the timing metrics dataframe for manual debugging
+                    logger.info(f"Step metrics:\n{emulation.get_step_metrics()}")
+                    logger.success("Finished")
+
+            return __test
+
+        # test all models and sampling schemes
+        models = ("empirical", "theoretical", "naive", "fitted-naive", "constant")
+        sampling = ("zero-wait", "ideal", "regular", "hold")
+
+        model_sampling_combs = list(
+            itertools.product(
+                models,
+                sampling,
+                [
+                    {
+                        "sampling_interval_seconds": 1.0,
+                        "hold_time_seconds": 1.0,
+                    }
+                ],
+                [{"neuroticism": 1.0}],
+            )
+        )
+
+        # combinations for adaptive
+        model_sampling_combs += list(
+            itertools.product(
+                models,
+                ["adaptive-aperiodic"],
+                [{"execution_time_model": m for m in models}],
+                [{"neuroticism": 1.0}],
+            )
+        )
+
+        for model, sampling, sampling_args, timing_args in model_sampling_combs:
+            test_name_pre = f"test_{model}_{sampling}"
+            test_name = test_name_pre
+            i = 0
+            while test_name in attr_dict:
+                i += 1
+                test_name = f"{test_name_pre}_{i:d}"
+
+            attr_dict[test_name] = make_test_method(
+                model, sampling, timing_args, sampling_args
+            )
+
+        return type.__new__(mcs, name, bases, attr_dict)
+
+
+class TestEmulation(unittest.TestCase, metaclass=EmulationLoopTestMeta):
+    # noinspection PyTypeChecker
+    def test_wrong_model_name(self) -> None:
         logger.remove()
         logger.add(sys.stderr, level="INFO", colorize=True)
 
         # invalid model name
         with self.assertRaises(NotImplementedError):
-            StreamSocketEmulation(neuroticism=0.5, trace="test", model="foobar")
-
-        # test all three models
-        for model in ("empirical", "theoretical", "naive"):
-            logger.info(f"Trying model: {model}")
-            emulation = StreamSocketEmulation(
-                neuroticism=0.5, trace="test", model=model
-            )
-
-            with client_server_sockets(timeout=1.0) as (csock, ssock):
-                server_t = TestServer("test", ssock)
-                server_t.start()
-                expecter = FrameResultExpecter(self)
-
-                def emit_callback(frame: ModelFrame) -> None:
-                    expecter.set_expected(frame.frame_tag)
-                    try:
-                        # callback to check for exceptions in server loop
-                        exc = server_t.get_exc_queue().get_nowait()
-                        raise exc
-                    except queue.Empty:
-                        pass
-
-                def result_callback(t: bool, i: Any, s: str) -> None:
-                    frame_result = server_t.get_result_queue().get_nowait()
-                    expecter.check_result(frame_result)
-                    try:
-                        # callback to check for exceptions in server loop
-                        exc = server_t.get_exc_queue().get_nowait()
-                        raise exc
-                    except queue.Empty:
-                        pass
-
-                emulation.emulate(csock, emit_cb=emit_callback, resp_cb=result_callback)
-
-                # close client first, to make sure no exceptions occur in server
-                csock.close()
-                try:
-                    # callback to check for exceptions in server loop
-                    exc = server_t.get_exc_queue().get_nowait()
-                    raise exc
-                except queue.Empty:
-                    pass
-
-                # should be able to join the server thread here, as the client socket
-                # closing should have triggered the server loop to end gracefully
-                server_t.join(timeout=0.1)
-                ssock.close()
-
-                # finally, output the timing metrics dataframe for manual debugging
-                logger.info(f"Step metrics:\n{emulation.get_step_metrics()}")
-                logger.success("Finished")
+            StreamSocketEmulation(trace="test", model="foobar")

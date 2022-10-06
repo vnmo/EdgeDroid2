@@ -44,9 +44,7 @@ def run_client(
     time.sleep(wait_seconds)
     try:
         emulation = StreamSocketEmulation(
-            neuroticism=0.5,
             trace=task,
-            # fade_distance=8,
             model="fitted-naive",
             sampling="ideal",
             truncate=truncate,
@@ -112,12 +110,14 @@ class TestCli(unittest.TestCase):
                         "127.0.0.1",
                         str(self.port),
                         self.task,
-                        "-n",
-                        "0.5",
                         "-m",
-                        "fitted-naive",
+                        "empirical",
+                        "--timing-args",
+                        '{"neuroticism": 1.0}',
                         "-s",
-                        "ideal",
+                        "adaptive-aperiodic",
+                        "--sampling-args",
+                        '{"execution_time_model": "empirical"}',
                         "-o",
                         f"{tmpdir}",
                         "-v",

@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import abc
 import itertools
-import os
 import time
 from collections import deque
-from typing import Iterator
+from typing import Iterator, Type
 
 import numpy as np
 import pandas as pd
 from numpy import typing as npt
 
-from .base import BaseFrameSamplingModel, FrameSample
+from .base import BaseFrameSamplingModel, FrameSample, TBaseSampling
 from ..timings import ExecutionTimeModel
+from ... import data as e_data
 
 
 def _aperiodic_instant_iterator(
@@ -117,111 +117,21 @@ def _aperiodic_sampling_instants(
         instants.append(tn)
 
 
-# def _periodic_sampling_interval(
-#     mu: float,
-#     alpha: float,
-#     beta: float,
-#     min_possible_exec_time: float = 0.5,
-# ) -> float:
-#     sigma = np.sqrt(np.divide(2, np.pi)) * mu
-#     K_max = int(np.ceil(100.0 * sigma / min_possible_exec_time))
-#
-#     def _energy_penalty(Ts: float) -> float:
-#         Ts_factor = alpha + (beta * Ts)
-#
-#         s2_sigma = np.sqrt(2) * sigma
-#
-#         def exponent(k: int) -> float:
-#             return -np.square(np.divide(k * Ts, s2_sigma))
-#
-#         sum_factor = sum([np.exp(exponent(k)) for k in range(K_max + 1)])
-#
-#         offset = beta * sigma * np.sqrt(np.divide(np.pi, 2))
-#
-#         return Ts_factor * sum_factor - offset
-#
-#     return scipy.optimize.minimize_scalar(_energy_penalty).x
-#
-#
-# def _energy_penalty_with_offset(
-#     Ts: float,
-#     delta: float,
-#     alpha: float,
-#     beta: float,
-#     sigma: float,
-#     K_max: int,
-# ) -> float:
-#     Ts_factor = alpha + (beta * Ts)
-#     s2_sigma = np.sqrt(2) * sigma
-#
-#     def exponent(k: int) -> float:
-#         return -np.square(np.divide((k * Ts) + delta, s2_sigma))
-#
-#     sum_factor = sum([np.exp(exponent(k)) for k in range(K_max + 1)])
-#
-#     return (
-#         (Ts_factor * sum_factor)
-#         - (beta * sigma * np.sqrt(np.divide(np.pi, 2)))
-#         + (beta * delta)
-#         + alpha
-#     )
-#
-#
-# def _periodic_sampling_interval_with_offset(
-#     mu: float,
-#     alpha: float,
-#     beta: float,
-#     Ts_range: Tuple[float, float],
-#     sampling_precision: float = 0.01,
-#     min_possible_exec_time: float = 0.5,
-#     delta_range: Optional[Tuple[float, float]] = None,
-# ) -> Tuple[float, float]:
-#     Ts_values = np.linspace(
-#         start=Ts_range[0],
-#         stop=Ts_range[1],
-#         endpoint=True,
-#         num=int(np.rint((Ts_range[1] - Ts_range[0]) / sampling_precision)),
-#     )
-#
-#     if delta_range is None:
-#         delta_values = Ts_values.copy()
-#     else:
-#         delta_values = np.linspace(
-#             start=delta_range[0],
-#             stop=delta_range[1],
-#             endpoint=True,
-#             num=int(np.rint((delta_range[1] - delta_range[0]) / sampling_precision)),
-#         )
-#
-#     sigma = np.sqrt(np.divide(2, np.pi)) * mu
-#     K_max = int(np.ceil(100.0 * sigma / min_possible_exec_time))
-#     p_matrix = np.empty(shape=(Ts_values.size, delta_values.size), dtype=float)
-#
-#     with Pool() as pool:
-#         futures = deque()
-#         for (Ti, Ts), (di, delta) in itertools.product(
-#             enumerate(Ts_values),
-#             enumerate(delta_values),
-#         ):
-#             fut = pool.apply_async(
-#                 _energy_penalty_with_offset,
-#                 kwds=dict(
-#                     Ts=Ts,
-#                     delta=delta,
-#                     alpha=alpha,
-#                     beta=beta,
-#                     sigma=sigma,
-#                     K_max=K_max,
-#                 ),
-#                 callback=lambda x: p_matrix.__setitem__((Ti, di), x),
-#             )
-#             futures.append(fut)
-#
-#         for fut in futures:
-#             fut.get()
-
-
 class BaseAdaptiveFrameSamplingModel(BaseFrameSamplingModel, metaclass=abc.ABCMeta):
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        execution_time_model: ExecutionTimeModel,
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        probs = e_data.load_default_frame_probabilities()
+        return cls(
+            probabilities=probs,
+            execution_time_model=execution_time_model,
+            success_tag="success",
+        )
+
     def __init__(
         self,
         probabilities: pd.DataFrame,
@@ -241,25 +151,37 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
     Implements Vishnu's aperiodic sampling.
     """
 
-    # TODO: better way of parameterizing this?
-    # TODO: document?
-
-    DELAY_COST_WINDOW_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_DELAY_COST_WINDOW"
-    BETA_CONST_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_BETA"
-    INIT_NETTIME_GUESS_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_NETTIME_GUESS"
-    PROCTIME_ENVVAR = "EDGEDROID_ADAPTIVE_SAMPLING_PROCTIME"
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        execution_time_model: ExecutionTimeModel,
+        delay_cost_window: int = 5,
+        beta: float = 1.0,
+        init_nettime_guess=0.3,
+        proctime: float = 0.0,
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        probs = e_data.load_default_frame_probabilities()
+        return cls(
+            probabilities=probs,
+            execution_time_model=execution_time_model,
+            success_tag="success",
+            delay_cost_window=delay_cost_window,
+            beta=beta,
+            init_nettime_guess=init_nettime_guess,
+            proctime=proctime,
+        )
 
     def __init__(
         self,
         probabilities: pd.DataFrame,
         execution_time_model: ExecutionTimeModel,
         success_tag: str = "success",
-        # init_network_time_guess_seconds: float = 0.3,  # based on exp data
-        # processing_time_seconds: float = 0.0,  # 0.3,  # taken from
-        # experimental data
-        # idle_factor: float = 4.0,
-        # busy_factor: float = 6.0,  # TODO: document, based on power consumption
-        # step_delay_cost_window: int = 5,
+        delay_cost_window: int = 5,
+        beta: float = 1.0,
+        init_nettime_guess=0.3,
+        proctime: float = 0.0,
     ):
         """
 
@@ -295,15 +217,12 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # TODO: defaults are magic numbers
 
         self._delay_costs = deque(
-            [float(os.getenv(self.INIT_NETTIME_GUESS_ENVVAR, 0.3))],
-            maxlen=int(os.getenv(self.DELAY_COST_WINDOW_ENVVAR, 5)),
+            [init_nettime_guess],
+            maxlen=delay_cost_window,
         )
 
-        # self._idle_factor = idle_factor
-        # self._busy_factor = busy_factor
-
-        self._processing_time = float(os.getenv(self.PROCTIME_ENVVAR, 0.0))
-        self._beta = float(os.getenv(self.BETA_CONST_ENVVAR, 1.0))
+        self._processing_time = proctime
+        self._beta = beta
 
     def step_iterator(
         self,

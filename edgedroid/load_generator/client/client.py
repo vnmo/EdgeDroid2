@@ -16,7 +16,7 @@ import contextlib
 import socket
 import time
 from collections import deque
-from typing import Any, Callable, Dict, Literal
+from typing import Any, Callable, Dict, Literal, Type
 
 import click
 import numpy.typing as npt
@@ -27,6 +27,7 @@ from ..common import pack_frame, response_stream_unpack
 from ... import data as e_data
 from ...models import (
     AperiodicFrameSamplingModel,
+    BaseFrameSamplingModel,
     EdgeDroidModel,
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
@@ -40,14 +41,58 @@ from ...models import (
     ConstantExecutionTimeModel,
     FittedNaiveExecutionTimeModel,
 )
+from ...models.sampling import TBaseSampling
 
-# from ...models.timings import NaiveExecutionTimeModel
+
+def _get_timing_model_cls(model_name: str) -> Type[ExecutionTimeModel]:
+    try:
+        timing_model_cls: Type[ExecutionTimeModel] = {
+            "theoretical": TheoreticalExecutionTimeModel,
+            "empirical": EmpiricalExecutionTimeModel,
+            "constant": ConstantExecutionTimeModel,
+            "naive": NaiveExecutionTimeModel,
+            "fitted-naive": FittedNaiveExecutionTimeModel,
+        }[model_name]
+        return timing_model_cls
+    except KeyError as e:
+        raise NotImplementedError(
+            f"Unrecognized execution time model: {model_name}"
+        ) from e
+
+
+class AdaptiveAperiodicSampling(AperiodicFrameSamplingModel):
+    # noinspection PyDefaultArgument
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        execution_time_model: str,
+        delay_cost_window: int = 5,
+        beta: float = 1.0,
+        init_nettime_guess=0.3,
+        proctime: float = 0.0,
+        timing_model_params: Dict[str, Any] = {"neuroticism": None},
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        probs = e_data.load_default_frame_probabilities()
+        timing_model_cls = _get_timing_model_cls(execution_time_model)
+        return cls(
+            probabilities=probs,
+            execution_time_model=timing_model_cls.from_default_data(
+                **timing_model_params
+            ),
+            success_tag="success",
+            delay_cost_window=delay_cost_window,
+            beta=beta,
+            init_nettime_guess=init_nettime_guess,
+            proctime=proctime,
+        )
 
 
 class StreamSocketEmulation:
+    # noinspection PyDefaultArgument
     def __init__(
         self,
-        neuroticism: float,
         trace: str,
         model: Literal[
             "theoretical",
@@ -56,79 +101,46 @@ class StreamSocketEmulation:
             "naive",
             "fitted-naive",
         ] = "theoretical",
-        sampling: str = "zero-wait",
+        sampling: Literal[
+            "zero-wait",
+            "ideal",
+            "regular",
+            "hold",
+            "adaptive-aperiodic",
+        ] = "zero-wait",
         truncate: int = -1,
+        timing_args: Dict[str, Any] = {},
+        sampling_args: Dict[str, Any] = {},
     ):
 
         trunc_log = f"(truncated to {truncate} steps)" if truncate >= 0 else ""
         logger.info(
             f"""
 Initializing EdgeDroid model with:
-- {neuroticism=:0.2f}
-- {trace=} {trunc_log}
-- {model=}
-- {sampling=}
+- Trace {trace} {trunc_log}
+- Timing model: {model} (args: {timing_args})
+- Sampling strategy: {sampling} (args: {sampling_args})
         """
         )
 
         # first thing first, prepare data
         frameset = e_data.load_default_trace(trace, truncate=truncate)
 
-        match model:
-            case "theoretical":
-                timing_model: ExecutionTimeModel = TheoreticalExecutionTimeModel.from_default_data(
-                    neuroticism=neuroticism,
-                    # transition_fade_distance=fade_distance,
-                )
-            case "empirical":
-                timing_model: ExecutionTimeModel = EmpiricalExecutionTimeModel.from_default_data(
-                    neuroticism=neuroticism,
-                    # transition_fade_distance=fade_distance,
-                )
-            case "constant":
-                timing_model: ExecutionTimeModel = (
-                    ConstantExecutionTimeModel.from_default_data()
-                )
-            case "naive":
-                timing_model: ExecutionTimeModel = (
-                    NaiveExecutionTimeModel.from_default_data()
-                )
-            case "fitted-naive":
-                timing_model: ExecutionTimeModel = (
-                    FittedNaiveExecutionTimeModel.from_default_data()
-                )
-            case _:
-                raise NotImplementedError(f"Unrecognized execution time model: {model}")
+        timing_model_cls = _get_timing_model_cls(model)
+        timing_model = timing_model_cls.from_default_data(**timing_args)
 
-            # parse the sampling strategy
-        sampling_vec = sampling.split("-")
-        match sampling_vec:
-            case ["zero", "wait"]:
-                frame_model = ZeroWaitFrameSamplingModel(
-                    e_data.load_default_frame_probabilities(),
-                )
-            case ["ideal"]:
-                frame_model = IdealFrameSamplingModel(
-                    e_data.load_default_frame_probabilities(),
-                )
-            case ["hold", time]:
-                frame_model = HoldFrameSamplingModel(
-                    e_data.load_default_frame_probabilities(),
-                    hold_time_seconds=float(time),
-                )
-            case ["regular", time]:
-                frame_model = RegularFrameSamplingModel(
-                    e_data.load_default_frame_probabilities(),
-                    sampling_interval_seconds=float(time),
-                )
-            case ["adaptive", "aperiodic"]:
-                frame_model = AperiodicFrameSamplingModel(
-                    e_data.load_default_frame_probabilities(),
-                    execution_time_model=timing_model,
-                    # step_delay_cost_window=1,  # TODO: tweak
-                )
-            case _:
-                raise NotImplementedError(f"No such sampling strategy: {sampling}")
+        try:
+            sampling_cls: Type[BaseFrameSamplingModel] = {
+                "zero-wait": ZeroWaitFrameSamplingModel,
+                "ideal": IdealFrameSamplingModel,
+                "hold": HoldFrameSamplingModel,
+                "regular": RegularFrameSamplingModel,
+                "adaptive-aperiodic": AdaptiveAperiodicSampling,
+            }[sampling]
+        except KeyError as e:
+            raise NotImplementedError(f"No such sampling strategy: {sampling}") from e
+
+        frame_model = sampling_cls.from_default_data(**sampling_args)
 
         self._model = EdgeDroidModel(
             frame_trace=frameset, frame_model=frame_model, timing_model=timing_model

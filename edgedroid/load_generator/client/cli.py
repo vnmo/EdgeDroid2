@@ -12,9 +12,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 import itertools
+import json
 import pathlib
 import socket
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 import click
 import yaml
@@ -22,6 +23,16 @@ from loguru import logger
 
 from .client import StreamSocketEmulation
 from ..common_cli import enable_logging
+
+
+class JSONOption(click.ParamType):
+    name = "JSON String"
+
+    def convert(self, value, param, ctx) -> Dict:
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            self.fail(f"{value!r} is not a valid JSON string.")
 
 
 @click.command(
@@ -48,14 +59,6 @@ from ..common_cli import enable_logging
     # TODO: list traces? in tools!
 )
 @click.option(
-    "-n",
-    "--neuroticism",
-    type=click.FloatRange(0.0, 1.0),
-    default=0.5,
-    show_default=True,
-    help="Normalized neuroticism value for the model.",
-)
-@click.option(
     "--truncate",
     type=int,
     default=-1,
@@ -64,15 +67,6 @@ from ..common_cli import enable_logging
     "emulation to work.",
     show_default=False,
 )
-# @click.option(
-#     "-f",
-#     "--fade-distance",
-#     type=int,
-#     default=8,
-#     show_default=True,
-#     help="Distance, in number of steps, after which the model forgets the "
-#     "most recent transition.",
-# )
 @click.option(
     "-m",
     "--timing-model",
@@ -94,19 +88,35 @@ from ..common_cli import enable_logging
     "\t- 'empirical' samples directly from the underlying data.\n"
     "\t- 'theoretical' first fits distributions to the data and then samples.\n"
     "\t- 'constant' uses a constant execution time equal to the mean execution time "
-    "of the underlying data.\n"
-    "\t - 'naive' samples the underlying data without any grouping\n"
-    "\t - 'fitted-naive' does the same as 'naive' but first fits a distribution to "
+    "of completely unimpaired samples in the underlying data.\n"
+    "\t- 'naive' samples the underlying data without any grouping\n"
+    "\t- 'fitted-naive' does the same as 'naive' but first fits a distribution to "
     "the data\n"
-    "\t\n",
+    "\t\n\n",
+)
+@click.option(
+    "--timing-args",
+    default="{}",
+    show_default=False,
+    type=JSONOption(),
+    help="Arguments to pass on to the timing model, as a JSON string.",
 )
 @click.option(
     "-s",
     "--sampling-strategy",
-    type=str,
+    type=click.Choice(
+        ["zero-wait", "ideal", "regular", "hold", "adaptive-aperiodic"],
+        case_sensitive=False,
+    ),
     default="zero-wait",
     show_default=True,
-    help="[zero-wait|ideal|regular-<seconds>|hold-<seconds>|adaptive-aperiodic]",
+)
+@click.option(
+    "--sampling-args",
+    default="{}",
+    show_default=False,
+    type=JSONOption(),
+    help="Arguments to pass on to the sampling strategy, as a JSON string.",
 )
 @click.option(
     "-o",
@@ -151,10 +161,8 @@ from ..common_cli import enable_logging
 def edgedroid_client(
     host: str,
     port: int,
-    neuroticism: float,
     trace: str,
     truncate: int,
-    # fade_distance: int,
     timing_model: Literal[
         "empirical",
         "theoretical",
@@ -162,14 +170,19 @@ def edgedroid_client(
         "naive",
         "fitted-naive",
     ],
-    sampling_strategy: str,
+    timing_args: Dict[str, Any],
+    sampling_strategy: Literal[
+        "zero-wait",
+        "ideal",
+        "regular",
+        "hold",
+        "adaptive-aperiodic",
+    ],
+    sampling_args: Dict[str, Any],
     verbose: bool,
-    # step_records_output: Optional[pathlib.Path],
-    # frame_records_output: Optional[pathlib.Path],
     output_dir: Optional[pathlib.Path],
     conn_tout: float,
     max_attempts: int,
-    # log_file: Optional[pathlib.Path],
 ):
     """
     Run an EdgeDroid2 client.
@@ -192,10 +205,11 @@ def edgedroid_client(
 
     # noinspection PyTypeChecker
     emulation = StreamSocketEmulation(
-        neuroticism=neuroticism,
         trace=trace,
-        model=timing_model,
-        sampling=sampling_strategy,
+        model=timing_model.lower(),
+        timing_args=timing_args,
+        sampling=sampling_strategy.lower(),
+        sampling_args=sampling_args,
         truncate=truncate,
     )
 

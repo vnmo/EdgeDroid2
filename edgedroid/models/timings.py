@@ -183,6 +183,11 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
     TODO: Define fallback behavior for missing data!
     """
 
+    @classmethod
+    @abc.abstractmethod
+    def from_default_data(cls, *args, **kwargs):
+        pass
+
     def __iter__(self):
         return self
 
@@ -283,7 +288,7 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
     """
 
     @classmethod
-    def from_default_data(cls) -> ExecutionTimeModel:
+    def from_default_data(cls, *args, **kwargs) -> ExecutionTimeModel:
         """
         Builds a naive model from the default data, using the average execution time
         of the best-case (unimpaired) steps as the execution time for the model.
@@ -351,7 +356,7 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
     """
 
     @classmethod
-    def from_default_data(cls) -> ExecutionTimeModel:
+    def from_default_data(cls, *args, **kwargs) -> ExecutionTimeModel:
         """
         Builds a naive model from the default data.
 
@@ -454,7 +459,10 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
 
     @classmethod
     def from_default_data(
-        cls, neuroticism: float | None, *args, **kwargs
+        cls,
+        neuroticism: float | None,
+        *args,
+        **kwargs,
     ) -> ExecutionTimeModel:
         from .. import data as e_data
 
