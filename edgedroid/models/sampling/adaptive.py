@@ -12,7 +12,9 @@ from numpy import typing as npt
 
 from .base import BaseFrameSamplingModel, FrameSample, TBaseSampling
 from ..timings import ExecutionTimeModel
-from ... import data as e_data
+
+
+# from ... import data as e_data
 
 
 def _aperiodic_instant_iterator(
@@ -125,6 +127,8 @@ class BaseAdaptiveFrameSamplingModel(BaseFrameSamplingModel, metaclass=abc.ABCMe
         *args,
         **kwargs,
     ) -> TBaseSampling:
+        from ... import data as e_data
+
         probs = e_data.load_default_frame_probabilities()
         return cls(
             probabilities=probs,
@@ -162,6 +166,8 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         *args,
         **kwargs,
     ) -> TBaseSampling:
+        from ... import data as e_data
+
         probs = e_data.load_default_frame_probabilities()
         return cls(
             probabilities=probs,

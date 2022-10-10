@@ -26,8 +26,6 @@ import numpy.typing as npt
 import pandas as pd
 import yaml
 
-from ... import data as e_data
-
 
 class TraceException(Exception):
     pass
@@ -206,6 +204,8 @@ TBaseSampling = TypeVar("TBaseSampling", bound="BaseFrameSamplingModel")
 class BaseFrameSamplingModel(abc.ABC):
     @classmethod
     def from_default_data(cls: Type[TBaseSampling], *args, **kwargs) -> TBaseSampling:
+        from ... import data as e_data
+
         probs = e_data.load_default_frame_probabilities()
         return cls(probabilities=probs, success_tag="success")
 
@@ -401,6 +401,8 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
         *args,
         **kwargs,
     ) -> TBaseSampling:
+        from ... import data as e_data
+
         probs = e_data.load_default_frame_probabilities()
         return cls(
             probabilities=probs,
@@ -452,6 +454,8 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
         *args,
         **kwargs,
     ) -> TBaseSampling:
+        from ... import data as e_data
+
         probs = e_data.load_default_frame_probabilities()
         return cls(
             probabilities=probs,
