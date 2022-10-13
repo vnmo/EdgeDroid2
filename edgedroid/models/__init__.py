@@ -28,6 +28,7 @@ from .sampling import (
     RegularFrameSamplingModel,
     ZeroWaitFrameSamplingModel,
     AperiodicFrameSamplingModel,
+    AperiodicPowerFrameSamplingModel,
     FrameSample,
 )
 from .timings import (
@@ -54,6 +55,7 @@ __all__ = [
     "HoldFrameSamplingModel",
     "RegularFrameSamplingModel",
     "AperiodicFrameSamplingModel",
+    "AperiodicPowerFrameSamplingModel",
     "ConstantExecutionTimeModel",
     "NaiveExecutionTimeModel",
     "FittedNaiveExecutionTimeModel",

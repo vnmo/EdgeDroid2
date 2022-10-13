@@ -4,7 +4,7 @@ import abc
 import itertools
 import time
 from collections import deque
-from typing import Iterator, Type
+from typing import Iterator, Sequence, Type
 
 import numpy as np
 import pandas as pd
@@ -150,85 +150,18 @@ class BaseAdaptiveFrameSamplingModel(BaseFrameSamplingModel, metaclass=abc.ABCMe
         self._timing_model = execution_time_model.copy()
 
 
-class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
-    """
-    Implements Vishnu's aperiodic sampling.
-    """
+class BaseAperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel, abc.ABC):
+    @abc.abstractmethod
+    def get_alpha(self) -> float:
+        ...
 
-    @classmethod
-    def from_default_data(
-        cls: Type[TBaseSampling],
-        execution_time_model: ExecutionTimeModel,
-        delay_cost_window: int = 5,
-        beta: float = 1.0,
-        init_nettime_guess=0.3,
-        proctime: float = 0.0,
-        *args,
-        **kwargs,
-    ) -> TBaseSampling:
-        from ... import data as e_data
+    @abc.abstractmethod
+    def get_beta(self) -> float:
+        ...
 
-        probs = e_data.load_default_frame_probabilities()
-        return cls(
-            probabilities=probs,
-            execution_time_model=execution_time_model,
-            success_tag="success",
-            delay_cost_window=delay_cost_window,
-            beta=beta,
-            init_nettime_guess=init_nettime_guess,
-            proctime=proctime,
-        )
-
-    def __init__(
-        self,
-        probabilities: pd.DataFrame,
-        execution_time_model: ExecutionTimeModel,
-        success_tag: str = "success",
-        delay_cost_window: int = 5,
-        beta: float = 1.0,
-        init_nettime_guess=0.3,
-        proctime: float = 0.0,
-    ):
-        """
-
-        Parameters
-        ----------
-        probabilities
-            Frame probabilities
-        execution_time_model
-            An execution time model to predict the next steps execution time.
-        success_tag
-
-        # init_network_time_guess_seconds
-        #     Initial guess for the network time.
-        # processing_time_seconds
-        #     Factor, expressed in seconds, that is subtracted from frame round-trip
-        #     times, representing the time processing took on the backend.
-        # idle_factor
-        #     Estimated idle power consumption of the client.
-        # busy_factor
-        #     Estimated communication power consumption of the client.
-        # network_time_window
-        #     Size of the network time window, in number of samples, used to calculate
-        #     the average network time at each step.
-        """
-        super(AperiodicFrameSamplingModel, self).__init__(
-            probabilities=probabilities,
-            execution_time_model=execution_time_model,
-            success_tag=success_tag,
-        )
-
-        # self._initial_nt_guess = init_network_time_guess_seconds
-        # self._network_times = deque()
-        # TODO: defaults are magic numbers
-
-        self._delay_costs = deque(
-            [init_nettime_guess],
-            maxlen=delay_cost_window,
-        )
-
-        self._processing_time = proctime
-        self._beta = beta
+    @abc.abstractmethod
+    def record_rtts(self, rtts: Sequence[float]) -> None:
+        ...
 
     def step_iterator(
         self,
@@ -247,18 +180,15 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
         # )
         self._timing_model.advance(ttf)
 
-        # TODO: check how often devolves into zero-wait
-
-        alpha = float(np.mean(self._delay_costs))
+        alpha = self.get_alpha()
+        beta = self.get_beta()
+        rtts = deque()
 
         for i, target_instant in enumerate(
             _aperiodic_instant_iterator(
                 mu=self._timing_model.get_expected_execution_time(),
                 alpha=alpha,
-                beta=self._beta,
-                # alpha=self._current_rtt_mean *
-                # (self._busy_factor - self._idle_factor),
-                # beta=self._idle_factor,
+                beta=beta,
             )
         ):
             try:
@@ -275,26 +205,158 @@ class AperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel):
                 instant=instant,
                 extra={
                     "alpha": alpha,
-                    "beta": self._beta,
+                    "beta": beta,
                     "ttf": ttf,
                     "target_instant": target_instant,
                     "late": late,
-                    "delay_cost_window": self._delay_costs.maxlen,
                 },
             )
-            dt = (time.monotonic() - step_start) - instant
+            rtts.append((time.monotonic() - step_start) - instant)
 
             if instant > target_time:
-                num_samples = i + 1
-                self._delay_costs.append(
-                    max(dt - self._processing_time, 0.0) / num_samples
-                )
-
-                # self._current_rtt_mean = (
-                #     np.mean(step_rtts) if len(step_rtts) > 0 else self._
-                #     current_rtt_mean
-                # )
+                self.record_rtts(rtts)
                 break
 
-            # only add frame rtt to collection if it's not a transition frame
-            # step_rtts.append(max(dt - self._processing_time, 0.0))
+
+class AperiodicFrameSamplingModel(BaseAperiodicFrameSamplingModel):
+    """
+    Implements Vishnu's aperiodic sampling, optimized for time.
+    """
+
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        execution_time_model: ExecutionTimeModel,
+        delay_cost_window: int = 5,
+        beta: float = 1.0,
+        init_rtt_guess=0.32,
+        proctime: float = 0.3,
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        from ... import data as e_data
+
+        probs = e_data.load_default_frame_probabilities()
+        return cls(
+            probabilities=probs,
+            execution_time_model=execution_time_model,
+            success_tag="success",
+            delay_cost_window=delay_cost_window,
+            beta=beta,
+            init_rtt_guess=init_rtt_guess,
+            proctime=proctime,
+        )
+
+    def __init__(
+        self,
+        probabilities: pd.DataFrame,
+        execution_time_model: ExecutionTimeModel,
+        success_tag: str = "success",
+        delay_cost_window: int = 5,
+        beta: float = 1.0,
+        init_rtt_guess=0.32,
+        proctime: float = 0.3,
+    ):
+        """
+
+        Parameters
+        ----------
+        probabilities
+            Frame probabilities
+        execution_time_model
+            An execution time model to predict the next steps execution time.
+        success_tag
+        """
+        super(AperiodicFrameSamplingModel, self).__init__(
+            probabilities=probabilities,
+            execution_time_model=execution_time_model,
+            success_tag=success_tag,
+        )
+
+        # self._initial_nt_guess = init_network_time_guess_seconds
+        # self._network_times = deque()
+        # TODO: defaults are magic numbers
+
+        self._alpha = 0.0
+        self._beta = beta
+        self._processing_time = proctime
+
+        self._delay_costs = deque(maxlen=delay_cost_window)
+        self.record_rtts([init_rtt_guess])
+
+    def get_beta(self) -> float:
+        return self._beta
+
+    def get_alpha(self) -> float:
+        return self._alpha
+
+    def record_rtts(self, rtts: Sequence[float]) -> None:
+        self._delay_costs.append(max(rtts[-1] - self._processing_time, 0.0) / len(rtts))
+        self._alpha = float(np.mean(self._delay_costs))
+
+
+class AperiodicPowerFrameSamplingModel(BaseAperiodicFrameSamplingModel):
+    # TODO: add to command line
+
+    @classmethod
+    def from_default_data(
+        cls: Type[TBaseSampling],
+        execution_time_model: ExecutionTimeModel,
+        success_tag: str = "success",
+        idle_power_w: float = 0.015,
+        comm_power_w: float = 0.045,
+        init_rtt_guess=0.32,
+        proctime_s: float = 0.3,
+        rtt_window_size: int = 10,
+        *args,
+        **kwargs,
+    ) -> TBaseSampling:
+        from ... import data as e_data
+
+        probs = e_data.load_default_frame_probabilities()
+        return cls(
+            probabilities=probs,
+            execution_time_model=execution_time_model,
+            success_tag=success_tag,
+            idle_power_w=idle_power_w,
+            comm_power_w=comm_power_w,
+            init_rtt_guess=init_rtt_guess,
+            proctime_s=proctime_s,
+            rtt_window_size=rtt_window_size,
+        )
+
+    def __init__(
+        self,
+        probabilities: pd.DataFrame,
+        execution_time_model: ExecutionTimeModel,
+        success_tag: str = "success",
+        idle_power_w: float = 0.015,
+        comm_power_w: float = 0.045,
+        init_rtt_guess=0.32,
+        proctime_s: float = 0.3,
+        rtt_window_size: int = 10,
+    ):
+        super(BaseAperiodicFrameSamplingModel, self).__init__(
+            probabilities=probabilities,
+            execution_time_model=execution_time_model,
+            success_tag=success_tag,
+        )
+
+        self._P0 = idle_power_w
+        self._Pc = comm_power_w
+        self._tc = 0.0
+        self._processing_time = proctime_s
+
+        self._rtt_window = deque(maxlen=rtt_window_size)
+        self.record_rtts([init_rtt_guess])
+
+    def record_rtts(self, rtts: Sequence[float]) -> None:
+        for rtt in rtts:
+            self._rtt_window.append(max(rtt - self._processing_time, 0.0))
+        self._tc = float(np.mean(self._rtt_window))
+
+    def get_alpha(self) -> float:
+        return self._tc * (self._Pc - self._P0)
+
+    def get_beta(self) -> float:
+        return self._P0
