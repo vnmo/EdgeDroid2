@@ -405,6 +405,26 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
 
 
 class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
+    @classmethod
+    def from_default_data(
+        cls,
+        dist: stats.rv_continuous = stats.exponnorm,
+        *args,
+        **kwargs,
+    ) -> ExecutionTimeModel:
+        """
+        Builds a naive model from the default data.
+
+        Returns
+        -------
+        ExecutionTimeModel
+            A naive execution time model.
+        """
+        from .. import data as e_data
+
+        data, *_ = e_data.load_default_exec_time_data()
+        return cls(data["exec_time"].to_numpy())
+
     def __init__(
         self,
         execution_times: npt.NDArray,
@@ -441,7 +461,7 @@ class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
         return float(self._dist.rvs())
 
     def get_expected_execution_time(self) -> float:
-        return self._dist.mean()
+        return self._dist.expect()
 
     def state_info(self) -> Dict[str, Any]:
         return {}
@@ -691,6 +711,29 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     sampled from theoretical distributions fitted to the underlying data.
     """
 
+    @classmethod
+    def from_default_data(
+        cls,
+        neuroticism: float | None,
+        distribution: stats.rv_continuous = stats.exponnorm,
+        *args,
+        **kwargs,
+    ) -> ExecutionTimeModel:
+        from .. import data as e_data
+
+        data = preprocess_data(
+            *e_data.load_default_exec_time_data(),
+        )
+
+        # noinspection PyArgumentList
+        return cls(
+            *args,
+            data=data,
+            neuroticism=neuroticism,
+            distribution=distribution,
+            **kwargs,
+        )
+
     def __init__(
         self,
         data: pd.DataFrame,
@@ -723,8 +766,12 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         self._dists = {}
         for imp_dur_trans, exec_times in self._data_views.items():
             # get the execution times, then fit the distribution to the samples
-            k, loc, scale = distribution.fit(exec_times)
-            self._dists[imp_dur_trans] = distribution.freeze(loc=loc, scale=scale, K=k)
+            *params, loc, scale = distribution.fit(exec_times)
+            self._dists[imp_dur_trans] = distribution.freeze(
+                *params,
+                loc=loc,
+                scale=scale,
+            )
 
         # calculate imp score range, based on distributions
         _min_exec_time_mean = np.inf
@@ -770,7 +817,7 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         return max(self._get_dist_for_current_state().rvs(), 0)
 
     def get_expected_execution_time(self) -> float:
-        return self._get_dist_for_current_state().mean()
+        return self._get_dist_for_current_state().expect()
 
     def get_impairment_score(self) -> float:
         current_mean = self._get_dist_for_current_state().mean()
