@@ -19,7 +19,15 @@ import itertools
 import time
 from collections import deque
 from os import PathLike
-from typing import Any, Dict, Iterator, NamedTuple, Sequence, Type, TypeVar
+from typing import (
+    Any,
+    Dict,
+    Generator,
+    NamedTuple,
+    Sequence,
+    Type,
+    TypeVar,
+)
 
 import numpy as np
 import numpy.typing as npt
@@ -29,6 +37,11 @@ import yaml
 
 class TraceException(Exception):
     pass
+
+
+class FrameTimings(NamedTuple):
+    nettime_s: float
+    proctime_s: float
 
 
 class FrameSet:
@@ -330,7 +343,11 @@ class BaseFrameSamplingModel(abc.ABC):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[FrameSample]:
+    ) -> Generator[FrameSample, FrameTimings, None]:
+        pass
+
+    def update_timings(self, nettimes: Sequence[float], proctimes: Sequence[float]):
+        # no-op by default
         pass
 
 
@@ -340,7 +357,7 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[FrameSample]:
+    ) -> Generator[FrameSample, FrameTimings, None]:
         """
         An iterator over the frame tags in a step.
         Any calls to next() between instants 0 and target_time will
@@ -358,7 +375,7 @@ class ZeroWaitFrameSamplingModel(BaseFrameSamplingModel):
         step_start = time.monotonic()
         for seq in itertools.count(start=1):
             instant = time.monotonic() - step_start
-            yield FrameSample(
+            _, _ = yield FrameSample(
                 seq=seq,
                 sample_tag=self.get_frame_at_instant(instant, target_time),
                 instant=instant,
@@ -374,12 +391,12 @@ class IdealFrameSamplingModel(ZeroWaitFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[FrameSample]:
+    ) -> Generator[FrameSample, FrameTimings, None]:
         step_start = time.monotonic()
         for seq in itertools.count(start=1):
             time.sleep(max(target_time - (time.monotonic() - step_start), 0))
             dt = time.monotonic() - step_start
-            yield FrameSample(
+            _, _ = yield FrameSample(
                 seq=seq,
                 sample_tag=self.get_frame_at_instant(dt, target_time),
                 instant=dt,
@@ -426,12 +443,12 @@ class HoldFrameSamplingModel(ZeroWaitFrameSamplingModel):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[FrameSample]:
+    ) -> Generator[FrameSample, FrameTimings, None]:
         step_start = time.monotonic()
         time.sleep(self._hold_time)
         for seq in itertools.count(start=1):
             instant = time.monotonic() - step_start
-            yield FrameSample(
+            _, _ = yield FrameSample(
                 seq=seq,
                 sample_tag=self.get_frame_at_instant(instant, target_time),
                 instant=instant,
@@ -478,8 +495,7 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
         self,
         target_time: float,
         ttf: float,
-        infinite: bool = False,
-    ) -> Iterator[FrameSample]:
+    ) -> Generator[FrameSample, FrameTimings, None]:
         step_start = time.monotonic()
         dt = 0
 
@@ -492,7 +508,7 @@ class RegularFrameSamplingModel(ZeroWaitFrameSamplingModel):
                 late = True
 
             instant = time.monotonic() - step_start
-            yield FrameSample(
+            _, _ = yield FrameSample(
                 seq=seq,
                 sample_tag=self.get_frame_at_instant(instant, target_time),
                 instant=instant,

@@ -67,6 +67,7 @@ def server(
 
             proc_time_mono = time.monotonic()
             proc_time = time.time()
+            processing_delay = proc_time_mono - recv_time_mono
 
             logger.debug(f"Processing result: {result}")
             result_cb(result)
@@ -82,6 +83,7 @@ def server(
             sock.sendall(
                 pack_response(
                     transition,
+                    processing_delay,
                     task.get_current_guide_illustration(),
                     task.get_current_instruction(),
                 )
@@ -96,7 +98,7 @@ def server(
                     received_monotonic=recv_time_mono,
                     processed=proc_time,
                     processed_monotonic=proc_time_mono,
-                    processing_time=proc_time_mono - recv_time_mono,
+                    processing_time=processing_delay,
                 )
             )
 

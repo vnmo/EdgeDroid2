@@ -31,6 +31,7 @@ from edgedroid.models import (
     EdgeDroidModel,
     ExecutionTimeModel,
     BaseFrameSamplingModel,
+    FrameTimings,
     ModelFrame,
 )
 import edgedroid.data as e_data
@@ -101,7 +102,12 @@ Initializing EdgeDroid model with:
             for step_num, model_step in enumerate(self._model.play_steps()):
                 logger.info(f"Current step: {step_num}")
                 ti = time.monotonic()
-                for model_frame in model_step:
+                frame_timings: Optional[FrameTimings] = None
+                while True:
+                    try:
+                        model_frame = model_step.send(frame_timings)
+                    except StopIteration:
+                        break
                     # package and send the frame
                     logger.debug(
                         f"Sending frame:\n"
@@ -117,13 +123,27 @@ Initializing EdgeDroid model with:
 
                     # wait for response
                     logger.debug("Waiting for response from server")
-                    transition, guidance_img, guidance_text, resp_size_bytes = next(
-                        resp_stream
-                    )
+                    (
+                        transition,
+                        processing_time_s,
+                        guidance_img,
+                        guidance_text,
+                        resp_size_bytes,
+                    ) = next(resp_stream)
+
                     recv_time = time.monotonic()
                     rtt = recv_time - send_time
+                    nettime_s = rtt - processing_time_s
+
+                    frame_timings = FrameTimings(nettime_s, processing_time_s)
+
                     logger.debug("Received response from server")
-                    logger.debug(f"Frame round-trip-time: {rtt:0.3f} seconds")
+                    logger.debug(
+                        f"Timing metrics: "
+                        f"RTT {rtt:0.3f}s | "
+                        f"Proc. time {processing_time_s:0.3f}s | "
+                        f"Net. time {nettime_s:0.3f}s"
+                    )
                     logger.info(f"Guidance: {guidance_text}")
                     resp_cb(transition, guidance_img, guidance_text)
 

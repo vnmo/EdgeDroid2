@@ -4,13 +4,14 @@ import abc
 import itertools
 import time
 from collections import deque
-from typing import Iterator, Sequence, Type
+from typing import Generator, Iterator, Sequence, Type
+from loguru import logger
 
 import numpy as np
 import pandas as pd
 from numpy import typing as npt
 
-from .base import BaseFrameSamplingModel, FrameSample, TBaseSampling
+from .base import BaseFrameSamplingModel, FrameSample, TBaseSampling, FrameTimings
 from ..timings import ExecutionTimeModel
 
 
@@ -160,7 +161,9 @@ class BaseAperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel, abc.ABC):
         ...
 
     @abc.abstractmethod
-    def record_rtts(self, rtts: Sequence[float]) -> None:
+    def update_timings(
+        self, nettimes: Sequence[float], proctimes: Sequence[float]
+    ) -> None:
         ...
 
     def step_iterator(
@@ -168,7 +171,7 @@ class BaseAperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel, abc.ABC):
         target_time: float,
         ttf: float,
         # infinite: bool = False,
-    ) -> Iterator[FrameSample]:
+    ) -> Generator[FrameSample, FrameTimings, None]:
 
         step_start = time.monotonic()
         # step_rtts = deque()
@@ -178,15 +181,23 @@ class BaseAperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel, abc.ABC):
         #     if len(self._network_times) > 0
         #     else self._initial_nt_guess
         # )
+        logger.debug(f"Advancing internal timing model, previous TTF = {ttf:0.5f}")
         self._timing_model.advance(ttf)
 
         alpha = self.get_alpha()
         beta = self.get_beta()
-        rtts = deque()
+        exp_exectime = self._timing_model.get_expected_execution_time()
+
+        logger.debug(
+            f"Current parameters: {alpha=:0.5f} | {beta=:0.5f}| {exp_exectime=:0.5f}"
+        )
+
+        nettimes = deque()
+        proctimes = deque()
 
         for i, target_instant in enumerate(
             _aperiodic_instant_iterator(
-                mu=self._timing_model.get_expected_execution_time(),
+                mu=exp_exectime,
                 alpha=alpha,
                 beta=beta,
             )
@@ -199,7 +210,7 @@ class BaseAperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel, abc.ABC):
                 late = True
 
             instant = time.monotonic() - step_start
-            yield FrameSample(
+            nettime, proctime = yield FrameSample(
                 seq=i + 1,
                 sample_tag=self.get_frame_at_instant(instant, target_time),
                 instant=instant,
@@ -211,10 +222,11 @@ class BaseAperiodicFrameSamplingModel(BaseAdaptiveFrameSamplingModel, abc.ABC):
                     "late": late,
                 },
             )
-            rtts.append((time.monotonic() - step_start) - instant)
+            nettimes.append(nettime)
+            proctimes.append(proctime)
 
             if instant > target_time:
-                self.record_rtts(rtts)
+                self.update_timings(nettimes, proctimes)
                 break
 
 
@@ -229,8 +241,7 @@ class AperiodicFrameSamplingModel(BaseAperiodicFrameSamplingModel):
         execution_time_model: ExecutionTimeModel,
         delay_cost_window: int = 5,
         beta: float = 1.0,
-        init_rtt_guess=0.32,
-        proctime: float = 0.3,
+        init_nettime_guess=0.02,
         *args,
         **kwargs,
     ) -> TBaseSampling:
@@ -243,8 +254,7 @@ class AperiodicFrameSamplingModel(BaseAperiodicFrameSamplingModel):
             success_tag="success",
             delay_cost_window=delay_cost_window,
             beta=beta,
-            init_rtt_guess=init_rtt_guess,
-            proctime=proctime,
+            init_nettime_guess=init_nettime_guess,
         )
 
     def __init__(
@@ -254,8 +264,7 @@ class AperiodicFrameSamplingModel(BaseAperiodicFrameSamplingModel):
         success_tag: str = "success",
         delay_cost_window: int = 5,
         beta: float = 1.0,
-        init_rtt_guess=0.32,
-        proctime: float = 0.3,
+        init_nettime_guess=0.02,
     ):
         """
 
@@ -277,12 +286,15 @@ class AperiodicFrameSamplingModel(BaseAperiodicFrameSamplingModel):
         # self._network_times = deque()
         # TODO: defaults are magic numbers
 
-        self._alpha = 0.0
         self._beta = beta
-        self._processing_time = proctime
-
         self._delay_costs = deque(maxlen=delay_cost_window)
-        self.record_rtts([init_rtt_guess])
+
+        # calculate initial value for alpha
+        self._alpha = init_nettime_guess
+
+        logger.debug(
+            f"Initial parameter values: {self._alpha=:0.5f} | {self._beta=:0.5f}"
+        )
 
     def get_beta(self) -> float:
         return self._beta
@@ -290,9 +302,13 @@ class AperiodicFrameSamplingModel(BaseAperiodicFrameSamplingModel):
     def get_alpha(self) -> float:
         return self._alpha
 
-    def record_rtts(self, rtts: Sequence[float]) -> None:
-        self._delay_costs.append(max(rtts[-1] - self._processing_time, 0.0) / len(rtts))
+    def update_timings(
+        self, nettimes: Sequence[float], proctimes: Sequence[float]
+    ) -> None:
+        self._delay_costs.append(nettimes[-1] / len(nettimes))
         self._alpha = float(np.mean(self._delay_costs))
+
+        logger.debug(f"Updated alpha, new value: {self._alpha=:0.5f}")
 
 
 class AperiodicPowerFrameSamplingModel(BaseAperiodicFrameSamplingModel):
@@ -305,9 +321,8 @@ class AperiodicPowerFrameSamplingModel(BaseAperiodicFrameSamplingModel):
         success_tag: str = "success",
         idle_power_w: float = 0.015,
         comm_power_w: float = 0.045,
-        init_rtt_guess=0.32,
-        proctime_s: float = 0.3,
-        rtt_window_size: int = 10,
+        init_nettime_guess=0.02,
+        step_window_size: int = 10,
         *args,
         **kwargs,
     ) -> TBaseSampling:
@@ -320,9 +335,8 @@ class AperiodicPowerFrameSamplingModel(BaseAperiodicFrameSamplingModel):
             success_tag=success_tag,
             idle_power_w=idle_power_w,
             comm_power_w=comm_power_w,
-            init_rtt_guess=init_rtt_guess,
-            proctime_s=proctime_s,
-            rtt_window_size=rtt_window_size,
+            init_nettime_guess=init_nettime_guess,
+            step_window_size=step_window_size,
         )
 
     def __init__(
@@ -332,9 +346,8 @@ class AperiodicPowerFrameSamplingModel(BaseAperiodicFrameSamplingModel):
         success_tag: str = "success",
         idle_power_w: float = 0.015,
         comm_power_w: float = 0.045,
-        init_rtt_guess=0.32,
-        proctime_s: float = 0.3,
-        rtt_window_size: int = 10,
+        init_nettime_guess=0.02,
+        step_window_size: int = 10,
     ):
         super(BaseAperiodicFrameSamplingModel, self).__init__(
             probabilities=probabilities,
@@ -344,16 +357,25 @@ class AperiodicPowerFrameSamplingModel(BaseAperiodicFrameSamplingModel):
 
         self._P0 = idle_power_w
         self._Pc = comm_power_w
-        self._tc = 0.0
-        self._processing_time = proctime_s
+        self._tc = init_nettime_guess
+        self._step_window = deque(maxlen=step_window_size)
 
-        self._rtt_window = deque(maxlen=rtt_window_size)
-        self.record_rtts([init_rtt_guess])
+        logger.debug(
+            f"Initial parameter values: "
+            f"{self.get_alpha()=:0.5f} | {self.get_beta()=:0.5f} | {self._tc=:0.5f}"
+        )
 
-    def record_rtts(self, rtts: Sequence[float]) -> None:
-        for rtt in rtts:
-            self._rtt_window.append(max(rtt - self._processing_time, 0.0))
-        self._tc = float(np.mean(self._rtt_window))
+    def update_timings(
+        self, nettimes: Sequence[float], proctimes: Sequence[float]
+    ) -> None:
+        for nettime in nettimes:
+            self._step_window.append(nettime)
+        self._tc = float(np.mean(self._step_window))
+
+        logger.debug(
+            "Updated communication delay, new values: "
+            f"{self._tc=:0.5f} | {self.get_alpha()=:0.5f}"
+        )
 
     def get_alpha(self) -> float:
         return self._tc * (self._Pc - self._P0)

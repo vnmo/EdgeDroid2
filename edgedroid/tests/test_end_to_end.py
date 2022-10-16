@@ -11,14 +11,15 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import time
 import unittest
+from typing import Optional
 
 from loguru import logger
 from tqdm import tqdm
 
 from .. import data as e_data
-from ..models import EdgeDroidModel, ZeroWaitFrameSamplingModel
+from ..models import EdgeDroidModel, FrameTimings, ZeroWaitFrameSamplingModel
 from ..models.timings import ConstantExecutionTimeModel
 from gabriel_lego.api import FrameResult, LEGOTask
 
@@ -47,13 +48,21 @@ class EndToEndTest(unittest.TestCase):
             task = LEGOTask(e_data.load_default_task(trace, truncate=tlen))
             for model_step in tqdm(model.play_steps(), total=task.task_length):
                 self.assertFalse(task.finished)
-                for model_frame in model_step:
+
+                frame_timings: Optional[FrameTimings] = None
+                while True:
+                    try:
+                        model_frame = model_step.send(frame_timings)
+                    except StopIteration:
+                        break
+                    ti = time.monotonic()
                     self.assertEqual(
                         FrameResult.SUCCESS,
                         task.submit_frame(model_frame.frame_data),
                         model_frame,
                     )
-                    break  # break otherwise we'll keep replaying the success frame
+                    proctime = time.monotonic() - ti
+                    frame_timings = FrameTimings(0, proctime)
 
             self.assertTrue(task.finished)
             logger.success(f"Trace {trace} passed test")

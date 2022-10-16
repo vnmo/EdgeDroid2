@@ -15,30 +15,31 @@
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Generator, Iterator, List, Optional
 
 import numpy.typing as npt
 import pandas as pd
 
 from .sampling import (
+    AperiodicFrameSamplingModel,
+    AperiodicPowerFrameSamplingModel,
     BaseFrameSamplingModel,
+    FrameSample,
     FrameSet,
+    FrameTimings,
     HoldFrameSamplingModel,
     IdealFrameSamplingModel,
     RegularFrameSamplingModel,
     ZeroWaitFrameSamplingModel,
-    AperiodicFrameSamplingModel,
-    AperiodicPowerFrameSamplingModel,
-    FrameSample,
 )
 from .timings import (
+    ConstantExecutionTimeModel,
     EmpiricalExecutionTimeModel,
     ExecutionTimeModel,
+    FittedNaiveExecutionTimeModel,
+    NaiveExecutionTimeModel,
     TheoreticalExecutionTimeModel,
     preprocess_data,
-    ConstantExecutionTimeModel,
-    NaiveExecutionTimeModel,
-    FittedNaiveExecutionTimeModel,
 )
 
 __all__ = [
@@ -151,7 +152,9 @@ class EdgeDroidModel:
     def frame_count(self) -> int:
         return self._frame_count
 
-    def play_steps(self) -> Iterator[Iterator[ModelFrame]]:
+    def play_steps(
+        self,
+    ) -> Iterator[Generator[ModelFrame, FrameTimings, None]]:
         """
         TODO: document
         """
@@ -160,11 +163,12 @@ class EdgeDroidModel:
 
         self.reset()
         step_frame_timestamps = deque()
+        initial_timings = {}
 
-        def _init_iter() -> Iterator[ModelFrame]:
+        def _init_iter() -> Generator[ModelFrame, FrameTimings, None]:
             self._frame_count += 1
             step_frame_timestamps.append(time.monotonic())
-            yield ModelFrame(
+            nettime, proctime = yield ModelFrame(
                 seq=self._frame_count,
                 step_seq=1,
                 step_index=-1,
@@ -174,6 +178,8 @@ class EdgeDroidModel:
                 frame_data=self._frames.get_initial_frame(),
                 extra_data={},
             )
+            initial_timings["nettime"] = nettime
+            initial_timings["proctime"] = proctime
 
         yield _init_iter()
         dt = time.monotonic() - prev_step_end
@@ -198,6 +204,11 @@ class EdgeDroidModel:
         self._step_records.append(step_record)
         prev_step_end = step_record.step_end_monotonic
 
+        # start the actual sampling scheme
+        self._frame_dists.update_timings(
+            [initial_timings["nettime"]], [initial_timings["proctime"]]
+        )
+
         for step_index in range(self.step_count):
             # get a step duration
             ttf = self._step_records[-1].time_to_feedback
@@ -206,18 +217,25 @@ class EdgeDroidModel:
             # clear the frame timestamp buffer
             step_frame_timestamps.clear()
 
-            def _frame_iter_for_step() -> Iterator[ModelFrame]:
+            def _frame_iter_for_step() -> Generator[ModelFrame, FrameTimings, None]:
                 # TODO: implement sampling records
                 # replay frames for step
-                for sample in self._frame_dists.step_iterator(
+                frame_iter = self._frame_dists.step_iterator(
                     target_time=execution_time,
-                    # infinite=True,
                     ttf=ttf,
-                ):
+                )
+                frame_timings: Optional[FrameTimings] = None
+
+                while True:
+                    try:
+                        sample = frame_iter.send(frame_timings)
+                    except StopIteration:
+                        break
+
                     self._frame_count += 1
                     # record frame emission timestamp
                     step_frame_timestamps.append(time.monotonic())
-                    yield ModelFrame(
+                    nettime, proctime = yield ModelFrame(
                         seq=self._frame_count,
                         step_seq=sample.seq,
                         step_index=step_index,
@@ -230,6 +248,7 @@ class EdgeDroidModel:
                         ),
                         extra_data=sample.extra,
                     )
+                    frame_timings = FrameTimings(nettime, proctime)
 
             yield _frame_iter_for_step()
             dt = time.monotonic() - prev_step_end  # duration of step

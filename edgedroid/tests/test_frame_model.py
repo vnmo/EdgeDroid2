@@ -14,14 +14,13 @@
 
 import unittest
 from collections import deque
-from importlib import resources
 
 import numpy as np
 import pandas as pd
 from numpy import testing as nptesting
 
-from ..models import ZeroWaitFrameSamplingModel
 from ..data import load_default_frame_probabilities
+from ..models import ZeroWaitFrameSamplingModel
 from ..models.sampling.adaptive import _aperiodic_instant_iterator
 
 

@@ -24,12 +24,12 @@ import numpy as np
 import numpy.typing as npt
 from loguru import logger
 
-HEADER_PACK_FMT = "!5I"  # [seq][height][width][channels][data length]
+HEADER_PACK_FMT = "! 5I"  # [seq][height][width][channels][data length]
 HEADER_LEN = struct.calcsize(HEADER_PACK_FMT)
 IMG_BYTES_ORDER = "C"
 
-RESP_PACK_FMT = "!?5I"
-# [success][height][width][channels][img data length][text data length]
+RESP_PACK_FMT = "! ? d 5I"
+# [success][processing time][height][width][channels][img data length][text data length]
 RESP_LEN = struct.calcsize(RESP_PACK_FMT)
 
 
@@ -40,6 +40,7 @@ class Frame(NamedTuple):
 
 class Response(NamedTuple):
     transition: bool
+    processing_time_s: float
     image_guidance: npt.NDArray
     text_guidance: str
     recv_size_bytes: int
@@ -99,7 +100,10 @@ def frame_stream_unpack(
 
 
 def pack_response(
-    transition: bool, image_guidance: npt.NDArray, text_guidance: str
+    transition: bool,
+    processing_delay_s: float,
+    image_guidance: npt.NDArray,
+    text_guidance: str,
 ) -> bytes:
     height, width, channels = image_guidance.shape
     img_data = image_guidance.tobytes(order=IMG_BYTES_ORDER)
@@ -109,7 +113,14 @@ def pack_response(
     text_len = len(text_data)
 
     header = struct.pack(
-        RESP_PACK_FMT, transition, height, width, channels, img_len, text_len
+        RESP_PACK_FMT,
+        transition,
+        processing_delay_s,
+        height,
+        width,
+        channels,
+        img_len,
+        text_len,
     )
 
     return header + img_data + text_data
@@ -124,9 +135,15 @@ def response_stream_unpack(
             resp_size_bytes = RESP_LEN
 
             # unpack the header into its constituent parts
-            transition, height, width, channels, img_len, text_len = struct.unpack(
-                RESP_PACK_FMT, resp_header
-            )
+            (
+                transition,
+                processing_time_s,
+                height,
+                width,
+                channels,
+                img_len,
+                text_len,
+            ) = struct.unpack(RESP_PACK_FMT, resp_header)
 
             img_data = recv_from_socket(sock, img_len)
             text_data = recv_from_socket(sock, text_len)
@@ -135,7 +152,13 @@ def response_stream_unpack(
             guidance_image = bytes_to_numpy_image(img_data, height, width, channels)
             guidance_text = text_data.decode("utf8")
 
-            yield transition, guidance_image, guidance_text, resp_size_bytes
+            yield Response(
+                transition,
+                processing_time_s,
+                guidance_image,
+                guidance_text,
+                resp_size_bytes,
+            )
     except EOFError:
         logger.warning("Socket was closed")
     finally:
