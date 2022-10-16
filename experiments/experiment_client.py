@@ -270,7 +270,7 @@ def edgedroid_client(
 
     enable_logging(verbose, log_file=log_file)
 
-    timing_model, sampling_scheme = experiments[experiment_id]()
+    timing_model, sampling_scheme, metadata = experiments[experiment_id]()
 
     # noinspection PyTypeChecker
     emulation = NetworkEmulation(
@@ -346,9 +346,8 @@ def edgedroid_client(
                     dict(
                         host=f"{host}:{port}",
                         task=trace,
-                        sampling_strategy=sampling_scheme.__class__.__name__,
-                        timing_model=timing_model,
-                        timing_model_params=emulation.get_timing_model_parameters(),
+                        truncate=truncate,
+                        **metadata,
                     ),
                     stream=fp,
                     explicit_start=True,
