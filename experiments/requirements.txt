@@ -1,0 +1,5 @@
+click
+pooch
+tqdm
+loguru
+-e git+https://github.com/molguin92/gabriel-lego-py3@master#egg=gabriel_lego

@@ -14,9 +14,11 @@
 
 from __future__ import annotations
 
+import pathlib
 import socket
 import struct
-from typing import Generator, NamedTuple, Tuple
+import sys
+from typing import Generator, NamedTuple, Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -138,3 +140,28 @@ def response_stream_unpack(
         logger.warning("Socket was closed")
     finally:
         logger.debug("Closing response stream unpacker")
+
+
+def enable_logging(verbose: bool, log_file: Optional[pathlib.Path] = None) -> None:
+    logger.enable("edgedroid")
+    logger.remove()
+
+    level = "DEBUG" if verbose else "INFO"
+    logger.add(sys.stderr, level=level)
+    if log_file is not None:
+        logger.debug(f"Saving logs to {log_file}")
+        logger.add(
+            log_file,
+            level=level,
+            colorize=False,
+            backtrace=True,
+            diagnose=True,
+            catch=True,
+        )
+
+    if verbose or log_file is not None:
+        logger.warning(
+            "Enabling verbose or file logging may affect application performance"
+        )
+
+    logger.info(f"Setting logging level to {level}")

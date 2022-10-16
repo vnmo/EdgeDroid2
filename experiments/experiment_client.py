@@ -11,33 +11,170 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+import contextlib
 import itertools
-import json
 import pathlib
 import socket
-from typing import Any, Dict, Literal, Optional
+import time
+from collections import deque
+from typing import Any, Callable, Dict, Optional
 
 import click
+import numpy.typing as npt
+import pandas as pd
 import yaml
 from loguru import logger
 
-from .client import StreamSocketEmulation
-from ..common_cli import enable_logging
+from common import pack_frame, response_stream_unpack, enable_logging
+from edgedroid.models import (
+    EdgeDroidModel,
+    ExecutionTimeModel,
+    BaseFrameSamplingModel,
+    ModelFrame,
+)
+import edgedroid.data as e_data
+from experiments import experiments
 
 
-class JSONOption(click.ParamType):
-    name = "JSON String"
+class NetworkEmulation:
+    # noinspection PyDefaultArgument
+    def __init__(
+        self,
+        trace: str,
+        timing_model: ExecutionTimeModel,
+        sampling_scheme: BaseFrameSamplingModel,
+        truncate: int = -1,
+    ):
 
-    def convert(self, value, param, ctx) -> Dict:
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            self.fail(f"{value!r} is not a valid JSON string.")
+        trunc_log = f"(truncated to {truncate} steps)" if truncate >= 0 else ""
+        logger.info(
+            f"""
+Initializing EdgeDroid model with:
+- Trace {trace} {trunc_log}
+- Timing model: {timing_model.__class__.__name__}
+- Sampling strategy: {sampling_scheme.__class__.__name__}
+        """
+        )
+
+        self._model = EdgeDroidModel(
+            frame_trace=e_data.load_default_trace(trace, truncate=truncate),
+            frame_model=sampling_scheme,
+            timing_model=timing_model,
+        )
+
+        self._frame_records = deque()
+
+    def get_timing_model_parameters(self) -> Dict[str, Any]:
+        return self._model.timing_model_params()
+
+    def get_step_metrics(self) -> pd.DataFrame:
+        return self._model.model_step_metrics()
+
+    def get_frame_metrics(self) -> pd.DataFrame:
+        return pd.DataFrame(self._frame_records).set_index("seq")
+
+    def emulate(
+        self,
+        sock: socket.SocketType,
+        emit_cb: Callable[[ModelFrame], None] = lambda _: None,
+        resp_cb: Callable[[bool, npt.NDArray, str], None] = lambda t, i, s: None,
+    ) -> None:
+        """
+        # TODO: document
+
+        Parameters
+        ----------
+        sock
+        emit_cb
+        resp_cb
+
+        Returns
+        -------
+
+        """
+
+        logger.warning("Starting emulation")
+        start_time = time.time()
+        start_time_mono = time.monotonic()
+        with contextlib.closing(response_stream_unpack(sock)) as resp_stream:
+            for step_num, model_step in enumerate(self._model.play_steps()):
+                logger.info(f"Current step: {step_num}")
+                ti = time.monotonic()
+                for model_frame in model_step:
+                    # package and send the frame
+                    logger.debug(
+                        f"Sending frame:\n"
+                        f"\tSeq: {model_frame.seq}\n"
+                        f"\tTag: {model_frame.frame_tag}\n"
+                        f"\tStep index: {model_frame.step_index}\n"
+                        f"\tFrame step seq: {model_frame.step_seq}"
+                    )
+                    payload = pack_frame(model_frame.seq, model_frame.frame_data)
+                    send_time = time.monotonic()
+                    sock.sendall(payload)
+                    emit_cb(model_frame)
+
+                    # wait for response
+                    logger.debug("Waiting for response from server")
+                    transition, guidance_img, guidance_text, resp_size_bytes = next(
+                        resp_stream
+                    )
+                    recv_time = time.monotonic()
+                    rtt = recv_time - send_time
+                    logger.debug("Received response from server")
+                    logger.debug(f"Frame round-trip-time: {rtt:0.3f} seconds")
+                    logger.info(f"Guidance: {guidance_text}")
+                    resp_cb(transition, guidance_img, guidance_text)
+
+                    # log the frame
+
+                    self._frame_records.append(
+                        {
+                            "seq": model_frame.seq,
+                            "step_index": model_frame.step_index,
+                            "step_seq": model_frame.step_seq,
+                            "expected_tag": model_frame.frame_tag,
+                            "transition": transition,
+                            "send_time": start_time + (send_time - start_time_mono),
+                            "rtt": rtt,
+                            "send_size_bytes": len(payload),
+                            "recv_size_bytes": resp_size_bytes,
+                            "frame_step_time": model_frame.step_frame_time,
+                            **{
+                                f"extra_{k}": v
+                                for k, v in model_frame.extra_data.items()
+                            },
+                        }
+                    )
+
+                # when step iterator finishes, we should have reached a success frame!
+                if not transition:
+                    logger.error(
+                        "Expected step transition, "
+                        "but backend returned non-success response."
+                    )
+                    raise click.Abort()
+
+                logger.success("Advancing to next step")
+                dt = time.monotonic() - ti
+                fps = model_frame.step_seq / dt
+                logger.debug(f"Step performance: {fps:0.2f} FPS")
+
+        logger.warning("Emulation finished")
 
 
 @click.command(
-    "edgedroid-client",
+    "edgedroid-experiment-client",
     context_settings={"auto_envvar_prefix": "EDGEDROID_CLIENT"},
+)
+@click.argument(
+    "experiment-id",
+    type=click.Choice(
+        list(experiments.keys()),
+        case_sensitive=True,
+    ),
+    envvar="EDGEDROID_CLIENT_EXPERIMENT_ID",
 )
 @click.argument(
     "host",
@@ -51,12 +188,8 @@ class JSONOption(click.ParamType):
 )
 @click.argument(
     "trace",
-    type=str,
+    type=click.Choice(list(e_data.load._default_traces), case_sensitive=True),
     envvar="EDGEDROID_CLIENT_TRACE",
-    # default="square00",
-    # show_default=True,
-    # help="Name of the task trace to use for emulation.",
-    # TODO: list traces? in tools!
 )
 @click.option(
     "--truncate",
@@ -66,57 +199,6 @@ class JSONOption(click.ParamType):
     "Note that the server needs to be configured with the same value for the "
     "emulation to work.",
     show_default=False,
-)
-@click.option(
-    "-m",
-    "--timing-model",
-    type=click.Choice(
-        [
-            "empirical",
-            "theoretical",
-            "constant",
-            "naive",
-            "fitted-naive",
-        ],
-        case_sensitive=True,
-    ),
-    default="theoretical",
-    show_default=True,
-    help="Execution time model to use:\n"
-    "\n"
-    "\b\n"
-    "\t- 'empirical' samples directly from the underlying data.\n"
-    "\t- 'theoretical' first fits distributions to the data and then samples.\n"
-    "\t- 'constant' uses a constant execution time equal to the mean execution time "
-    "of completely unimpaired samples in the underlying data.\n"
-    "\t- 'naive' samples the underlying data without any grouping\n"
-    "\t- 'fitted-naive' does the same as 'naive' but first fits a distribution to "
-    "the data\n"
-    "\t\n\n",
-)
-@click.option(
-    "--timing-args",
-    default="{}",
-    show_default=False,
-    type=JSONOption(),
-    help="Arguments to pass on to the timing model, as a JSON string.",
-)
-@click.option(
-    "-s",
-    "--sampling-strategy",
-    type=click.Choice(
-        ["zero-wait", "ideal", "regular", "hold", "adaptive-aperiodic"],
-        case_sensitive=False,
-    ),
-    default="zero-wait",
-    show_default=True,
-)
-@click.option(
-    "--sampling-args",
-    default="{}",
-    show_default=False,
-    type=JSONOption(),
-    help="Arguments to pass on to the sampling strategy, as a JSON string.",
 )
 @click.option(
     "-o",
@@ -159,26 +241,11 @@ class JSONOption(click.ParamType):
     "negative value for infinite retries.",
 )
 def edgedroid_client(
+    experiment_id: str,
     host: str,
     port: int,
     trace: str,
     truncate: int,
-    timing_model: Literal[
-        "empirical",
-        "theoretical",
-        "constant",
-        "naive",
-        "fitted-naive",
-    ],
-    timing_args: Dict[str, Any],
-    sampling_strategy: Literal[
-        "zero-wait",
-        "ideal",
-        "regular",
-        "hold",
-        "adaptive-aperiodic",
-    ],
-    sampling_args: Dict[str, Any],
     verbose: bool,
     output_dir: Optional[pathlib.Path],
     conn_tout: float,
@@ -203,13 +270,13 @@ def edgedroid_client(
 
     enable_logging(verbose, log_file=log_file)
 
+    timing_model, sampling_scheme = experiments[experiment_id]()
+
     # noinspection PyTypeChecker
-    emulation = StreamSocketEmulation(
+    emulation = NetworkEmulation(
         trace=trace,
-        model=timing_model.lower(),
-        timing_args=timing_args,
-        sampling=sampling_strategy.lower(),
-        sampling_args=sampling_args,
+        timing_model=timing_model,
+        sampling_scheme=sampling_scheme,
         truncate=truncate,
     )
 
@@ -279,7 +346,7 @@ def edgedroid_client(
                     dict(
                         host=f"{host}:{port}",
                         task=trace,
-                        sampling_strategy=sampling_strategy,
+                        sampling_strategy=sampling_scheme.__class__.__name__,
                         timing_model=timing_model,
                         timing_model_params=emulation.get_timing_model_parameters(),
                     ),
@@ -287,3 +354,7 @@ def edgedroid_client(
                     explicit_start=True,
                     explicit_end=True,
                 )
+
+
+if __name__ == "__main__":
+    edgedroid_client()
