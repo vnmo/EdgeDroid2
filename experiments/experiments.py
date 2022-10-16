@@ -71,7 +71,7 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
         ),
         metadata={
             "timing_model": "empirical-high",
-            "sampling_scheme": "adaptive-power-fitted-naive=rayleigh",
+            "sampling_scheme": "adaptive-power-fitted-naive-rayleigh",
         },
     ),
 }
