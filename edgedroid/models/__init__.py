@@ -60,6 +60,7 @@ __all__ = [
     "ConstantExecutionTimeModel",
     "NaiveExecutionTimeModel",
     "FittedNaiveExecutionTimeModel",
+    "FrameTimings",
 ]
 
 
