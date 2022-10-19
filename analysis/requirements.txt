@@ -9,3 +9,4 @@ tqdm
 multiprocess
 dill
 modin[dask]
+scipy
