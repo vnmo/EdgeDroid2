@@ -41,6 +41,7 @@ class FrameRecord:
     processed_monotonic: float
     processing_time: float
     result: FrameResult
+    extra_delay: float
 
     def to_dict(self) -> Dict[str, int | float | FrameResult]:
         return asdict(self)
@@ -51,6 +52,7 @@ def server(
     sock: socket.SocketType,
     result_cb: Callable[[FrameResult], None] = lambda _: None,
     truncate: int = -1,
+    extra_delay: float = 0.0,
 ) -> pd.DataFrame:
     logger.info(f"Starting LEGO task trace '{task_name}'")
     records = deque()
@@ -80,6 +82,8 @@ def server(
             else:
                 transition = False
 
+            # hold
+            time.sleep(extra_delay)
             sock.sendall(
                 pack_response(
                     transition,
@@ -99,6 +103,7 @@ def server(
                     processed=proc_time,
                     processed_monotonic=proc_time_mono,
                     processing_time=processing_delay,
+                    extra_delay=extra_delay,
                 )
             )
 
@@ -126,6 +131,7 @@ def serve_LEGO_task(
     output_path: pathlib.Path,
     bind_address: str = "0.0.0.0",
     truncate: int = -1,
+    extra_delay: float = 0.0,
 ) -> None:
     with contextlib.ExitStack() as stack:
         # enter context
@@ -141,7 +147,12 @@ def serve_LEGO_task(
         # logger.debug(f"One-shot mode: {'on' if one_shot else 'off'}")
         try:
             with accept_context(server_sock) as (conn, _):
-                server(task_name, conn, truncate=truncate).to_csv(output_path)
+                server(
+                    task_name,
+                    conn,
+                    truncate=truncate,
+                    extra_delay=extra_delay,
+                ).to_csv(output_path)
         except KeyboardInterrupt:
             logger.warning("Got keyboard interrupt, aborting")
             logger.warning("Shutting down!")
@@ -198,6 +209,13 @@ def serve_LEGO_task(
     help="Enable verbose logging.",
     show_default=True,
 )
+@click.option(
+    "--delay-seconds",
+    type=float,
+    default=0.0,
+    help="Additional time to hold each response.",
+    show_default=False,
+)
 def edgedroid_server(
     bind_address: str,
     bind_port: int,
@@ -206,6 +224,7 @@ def edgedroid_server(
     # one_shot: bool,
     verbose: bool,
     output_dir: Optional[pathlib.Path],
+    delay_seconds: float,
     # output: pathlib.Path,
     # log_file: Optional[pathlib.Path],
 ):
@@ -233,6 +252,7 @@ def edgedroid_server(
             bind_address=bind_address,
             output_path=server_output,
             truncate=truncate,
+            extra_delay=delay_seconds,
         )
     except Exception as e:
         loguru.logger.exception(e)
