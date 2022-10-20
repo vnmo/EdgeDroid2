@@ -111,33 +111,33 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={"timing_model": "empirical-low", "sampling_scheme": "greedy"},
     ),
-    "theoretical-gaussian-high-greedy": lambda: ExperimentConfig(
+    "theoretical-exgaussian-high-greedy": lambda: ExperimentConfig(
         timing_model=TheoreticalExecutionTimeModel.from_default_data(
             neuroticism=1.0, distribution=stats.exponnorm
         ),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={
-            "timing_model": "theoretical-gaussian-high",
+            "timing_model": "theoretical-exgaussian-high",
             "sampling_scheme": "greedy",
         },
     ),
-    "theoretical-gaussian-low-greedy": lambda: ExperimentConfig(
+    "theoretical-exgaussian-low-greedy": lambda: ExperimentConfig(
         timing_model=TheoreticalExecutionTimeModel.from_default_data(
             neuroticism=0.0, distribution=stats.exponnorm
         ),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={
-            "timing_model": "theoretical-gaussian-low",
+            "timing_model": "theoretical-exgaussian-low",
             "sampling_scheme": "greedy",
         },
     ),
-    "fitted-naive-gaussian-greedy": lambda: ExperimentConfig(
+    "fitted-naive-exgaussian-greedy": lambda: ExperimentConfig(
         timing_model=FittedNaiveExecutionTimeModel.from_default_data(
             distribution=stats.exponnorm
         ),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={
-            "timing_model": "fitted-naive-gaussian",
+            "timing_model": "fitted-naive-exgaussian",
             "sampling_scheme": "greedy",
         },
     ),
