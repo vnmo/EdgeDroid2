@@ -18,7 +18,7 @@ import abc
 import copy
 import enum
 from collections import deque
-from typing import Any, Dict, Iterator, TypeVar
+from typing import Any, Dict, Iterator, Tuple, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -155,22 +155,6 @@ def preprocess_data(
     return proc_data
 
 
-def winsorize_series(e: pd.Series) -> npt.NDArray:
-    # clean up execution times by setting
-    # x = 5th percentile, for all values < 5th percentile
-    # x = 95th percentile, for all values > 95th percentile
-
-    e = e.dropna().to_numpy(dtype=np.float64)
-
-    percs = np.percentile(e, [5, 95])
-    mask5 = e < percs[0]
-    mask95 = e > percs[1]
-
-    e[mask5] = percs[0]
-    e[mask95] = percs[1]
-    return e
-
-
 # workaround for typing methods of classes as returning the same type as the
 # enclosing class, while also working for extending classes
 TTimingModel = TypeVar("TTimingModel", bound="ExecutionTimeModel")
@@ -179,14 +163,18 @@ TTimingModel = TypeVar("TTimingModel", bound="ExecutionTimeModel")
 class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
     """
     Defines the general interface for execution time models.
-
-    TODO: Define fallback behavior for missing data!
     """
 
-    @classmethod
-    @abc.abstractmethod
-    def from_default_data(cls, *args, **kwargs):
-        pass
+    @staticmethod
+    def get_data() -> Tuple[
+        pd.DataFrame,
+        pd.arrays.IntervalArray,
+        pd.arrays.IntervalArray,
+        pd.arrays.IntervalArray,
+    ]:
+        import edgedroid.data as e_data
+
+        return e_data.load_default_exec_time_data()
 
     def __iter__(self):
         return self
@@ -205,21 +193,6 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
             Time-to-feedback of the previous step, expressed in seconds.
         """
         return self
-
-    @abc.abstractmethod
-    def get_impairment_score(self) -> float:
-        """
-        Returns
-        -------
-        float
-            A normalized "impairment" score for this model, where 0 corresponds to
-            completely unimpaired and 1.0 to completely impaired.
-
-            This score is derived from the maximum and minimum mean execution times
-            this model can produce. The mean of the current state is then normalized
-            against these values to produce the score.
-        """
-        pass
 
     @abc.abstractmethod
     def get_execution_time(self) -> float:
@@ -287,39 +260,6 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
     Returns a constant execution time.
     """
 
-    @classmethod
-    def from_default_data(cls, *args, **kwargs) -> ExecutionTimeModel:
-        """
-        Builds a naive model from the default data, using the average execution time
-        of the best-case (unimpaired) steps as the execution time for the model.
-
-        Returns
-        -------
-        ExecutionTimeModel
-            A naive execution time model.
-        """
-
-        # TODO: should this model be more complex? Maybe use a (simple) distribution?
-
-        from .. import data as e_data
-
-        data = preprocess_data(
-            *e_data.load_default_exec_time_data(),
-            # transition_fade_distance=4,
-        )
-
-        # only grab execution times for steps that
-        # 1. correspond to an "unimpaired" state
-        # 2. are not marked as being close to a transition.
-        data = data[
-            (data["impairment"] == data["impairment"].min())
-            & (data["duration"] != data["duration"].min())
-        ]
-
-        # clean outliers
-        # exec_times = winsorize_series(data["next_exec_time"])
-        return cls(data["next_exec_time"].mean())
-
     def __init__(self, execution_time_seconds: float):
         super(ConstantExecutionTimeModel, self).__init__()
         self._exec_time = execution_time_seconds
@@ -332,9 +272,6 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
     def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
         # no-op
         return self
-
-    def get_impairment_score(self) -> float:
-        return 0.0
 
     def get_execution_time(self) -> float:
         return self._exec_time
@@ -355,24 +292,10 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
     Returns execution times sampled from a simple distribution.
     """
 
-    @classmethod
-    def from_default_data(cls, *args, **kwargs) -> ExecutionTimeModel:
-        """
-        Builds a naive model from the default data.
-
-        Returns
-        -------
-        ExecutionTimeModel
-            A naive execution time model.
-        """
-        from .. import data as e_data
-
-        data, *_ = e_data.load_default_exec_time_data()
-        return cls(data["exec_time"].to_numpy())
-
-    def __init__(self, execution_times: npt.NDArray):
+    def __init__(self):
         super(NaiveExecutionTimeModel, self).__init__()
-        self._exec_times = execution_times
+        data, *_ = self.get_data()
+        self._exec_times = data["exec_time"].to_numpy()
         self._rng = np.random.default_rng()
 
     def get_model_params(self) -> Dict[str, Any]:
@@ -386,9 +309,6 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
     def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
         # no-op
         return self
-
-    def get_impairment_score(self) -> float:
-        return 0.0
 
     def get_execution_time(self) -> float:
         return self._rng.choice(self._exec_times)
@@ -405,34 +325,11 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
 
 
 class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
-    @classmethod
-    def from_default_data(
-        cls,
-        dist: stats.rv_continuous = stats.exponnorm,
-        *args,
-        **kwargs,
-    ) -> ExecutionTimeModel:
-        """
-        Builds a naive model from the default data.
-
-        Returns
-        -------
-        ExecutionTimeModel
-            A naive execution time model.
-        """
-        from .. import data as e_data
-
-        data, *_ = e_data.load_default_exec_time_data()
-        return cls(data["exec_time"].to_numpy())
-
     def __init__(
         self,
-        execution_times: npt.NDArray,
         dist: stats.rv_continuous = stats.exponnorm,
     ):
-        super(FittedNaiveExecutionTimeModel, self).__init__(
-            execution_times,
-        )
+        super(FittedNaiveExecutionTimeModel, self).__init__()
 
         *self._dist_args, self._loc, self._scale = dist.fit(self._exec_times)
         self._dist: stats.rv_continuous = dist.freeze(
@@ -454,9 +351,6 @@ class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
         # no-op
         return self
 
-    def get_impairment_score(self) -> float:
-        return 0.0
-
     def get_execution_time(self) -> float:
         return float(self._dist.rvs())
 
@@ -477,44 +371,20 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     sampled from the empirical distributions of the underlying data.
     """
 
-    @classmethod
-    def from_default_data(
-        cls,
-        neuroticism: float | None,
-        *args,
-        **kwargs,
-    ) -> ExecutionTimeModel:
-        from .. import data as e_data
-
-        data = preprocess_data(
-            *e_data.load_default_exec_time_data(),
-        )
-
-        # noinspection PyArgumentList
-        return cls(
-            *args,
-            data=data,
-            neuroticism=neuroticism,
-            **kwargs,
-        )
-
     def __init__(
         self,
-        data: pd.DataFrame,
         neuroticism: float | None,
         state_checks_enabled: bool = True,
     ):
         """
         Parameters
         ----------
-        data
-            A pd.DataFrame containing appropriate columns. Such a DataFrame
-            can be obtained through the preprocess_data function in this module.
         neuroticism
             A normalized value of neuroticism for this model.
         """
 
         super().__init__()
+        data = preprocess_data(*self.get_data())
 
         # unique bins (interval arrays)
         self._duration_bins = data["duration"].unique()
@@ -573,17 +443,6 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
                         self._data_views[(imp, dur, tran)] = tdf[
                             "next_exec_time"
                         ].to_numpy()
-
-        # calculate imp score range
-        _min_exec_time_mean = np.inf
-        _max_exec_time_mean = -np.inf
-        for _, exec_times in self._data_views.items():
-            current_mean = exec_times.mean()
-            _min_exec_time_mean = np.min((_min_exec_time_mean, current_mean))
-            _max_exec_time_mean = np.max((_max_exec_time_mean, current_mean))
-
-        self._max_score = _max_exec_time_mean - _min_exec_time_mean
-        self._score_offset = _min_exec_time_mean
 
         self._imp_memory = deque()
         self._seq = 0
@@ -677,10 +536,6 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self._get_data_for_current_state().mean()
 
-    def get_impairment_score(self) -> float:
-        current_mean = self._get_data_for_current_state().mean()
-        return (current_mean - self._score_offset) / self._max_score
-
     def state_info(self) -> Dict[str, Any]:
         try:
             binned_duration = self._duration_bins[
@@ -711,32 +566,8 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     sampled from theoretical distributions fitted to the underlying data.
     """
 
-    @classmethod
-    def from_default_data(
-        cls,
-        neuroticism: float | None,
-        distribution: stats.rv_continuous = stats.exponnorm,
-        *args,
-        **kwargs,
-    ) -> ExecutionTimeModel:
-        from .. import data as e_data
-
-        data = preprocess_data(
-            *e_data.load_default_exec_time_data(),
-        )
-
-        # noinspection PyArgumentList
-        return cls(
-            *args,
-            data=data,
-            neuroticism=neuroticism,
-            distribution=distribution,
-            **kwargs,
-        )
-
     def __init__(
         self,
-        data: pd.DataFrame,
         neuroticism: float | None,
         distribution: stats.rv_continuous = stats.exponnorm,
         state_checks_enabled: bool = True,
@@ -744,9 +575,6 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         """
         Parameters
         ----------
-        data
-            A pd.DataFrame containing appropriate columns. Such a DataFrame
-            can be obtained through the preprocess_data function in this module.
         neuroticism
             A normalized value of neuroticism for this model.
         distribution
@@ -756,7 +584,8 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
         """
 
         super(TheoreticalExecutionTimeModel, self).__init__(
-            data, neuroticism, state_checks_enabled=state_checks_enabled
+            neuroticism=neuroticism,
+            state_checks_enabled=state_checks_enabled,
         )
 
         # at this point, the views have been populated with data according to
@@ -773,16 +602,6 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
                 scale=scale,
             )
 
-        # calculate imp score range, based on distributions
-        _min_exec_time_mean = np.inf
-        _max_exec_time_mean = -np.inf
-        for _, dist in self._dists.items():
-            current_mean = dist.mean()
-            _min_exec_time_mean = np.min((_min_exec_time_mean, current_mean))
-            _max_exec_time_mean = np.max((_max_exec_time_mean, current_mean))
-
-        self._max_score = _max_exec_time_mean - _min_exec_time_mean
-        self._score_offset = _min_exec_time_mean
         self._distribution = distribution
 
     def get_model_params(self) -> Dict[str, Any]:
@@ -819,6 +638,117 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self._get_dist_for_current_state().expect()
 
-    def get_impairment_score(self) -> float:
-        current_mean = self._get_dist_for_current_state().mean()
-        return (current_mean - self._score_offset) / self._max_score
+
+def _convolve_kernel(arr: pd.Series, kernel: npt.NDArray):
+    index = arr.index
+    arr = arr.to_numpy()
+    lkernel = np.concatenate([np.zeros(kernel.size - 1), kernel / kernel.sum()])
+    return pd.Series(np.convolve(arr, lkernel, "same"), index=index)
+
+
+class ExpKernelRollingTTFETModel(ExecutionTimeModel):
+    @staticmethod
+    def make_kernel(window: int, exp_factor: float = 0.7):
+        kernel = np.zeros(window)
+        for i in range(window):
+            kernel[i] = np.exp(-exp_factor * i)
+
+        return kernel / kernel.sum()
+
+    def __init__(self, neuroticism: float, window: int = 8, ttf_levels: int = 7):
+
+        data, neuro_bins, *_ = self.get_data()
+
+        # bin neuroticism
+        data["binned_neuro"] = pd.cut(
+            data["neuroticism"], bins=pd.IntervalIndex(neuro_bins)
+        ).astype(pd.IntervalDtype(float))
+        data = data[data["binned_neuro"].array.contains(neuroticism)].copy()
+
+        data["next_exec_time"] = data["exec_time"].shift(-1)
+        data = data.dropna()
+
+        # roll the ttfs
+        self._kernel = self.make_kernel(window)
+        data["rolling_ttf"] = data.groupby("run_id")["ttf"].apply(
+            lambda arr: _convolve_kernel(arr, self._kernel)
+        )
+        _, ttf_bins = pd.qcut(data["rolling_ttf"], ttf_levels, retbins=True)
+        ttf_bins[0], ttf_bins[-1] = -np.inf, np.inf
+        self._ttf_bins = pd.IntervalIndex.from_breaks(ttf_bins, closed="right")
+        data["binned_rolling_ttf"] = pd.cut(data["rolling_ttf"], bins=self._ttf_bins)
+
+        # prepare views
+        self._views: Dict[pd.Interval, npt.NDArray] = {}
+        for binned_rolling_ttf, df in data.groupby("binned_rolling_ttf", observed=True):
+            self._views[binned_rolling_ttf] = df["next_exec_time"].to_numpy()
+
+        self._window = np.zeros(window, dtype=float)
+        self._neuroticism = neuroticism
+        self._rng = np.random.default_rng()
+
+    def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
+        self._window = np.roll(self._window, shift=1)
+        self._window[0] = ttf
+        return self
+
+    def _get_binned_ttf(self) -> pd.Interval:
+        weighted_ttf = np.multiply(self._window, self._kernel).sum()
+        return self._ttf_bins[self._ttf_bins.contains(weighted_ttf)][0]
+
+    def get_execution_time(self) -> float:
+        return self._rng.choice(self._views[self._get_binned_ttf()])
+
+    def get_expected_execution_time(self) -> float:
+        return self._views[self._get_binned_ttf()].mean()
+
+    def state_info(self) -> Dict[str, Any]:
+        return {
+            "ttf_window": self._window,
+            "weights": self._kernel,
+            "weighted_ttf": np.multiply(self._window, self._kernel).sum(),
+            "neuroticism": self._neuroticism,
+        }
+
+    def reset(self) -> None:
+        self._window = np.zeros(self._window.size, dtype=float)
+        self._rng = np.random.default_rng()
+
+    def get_model_params(self) -> Dict[str, Any]:
+        return {
+            "neuroticism": self._neuroticism,
+            "window": self._window.size,
+            "ttf_levels": len(self._ttf_bins),
+        }
+
+
+class DistExpKernelRollingTTFETModel(ExpKernelRollingTTFETModel):
+    def __init__(
+        self,
+        neuroticism: float,
+        dist: stats.rv_continuous = stats.exponnorm,
+        window: int = 8,
+        ttf_levels: int = 7,
+    ):
+        super(DistExpKernelRollingTTFETModel, self).__init__(
+            neuroticism=neuroticism, window=window, ttf_levels=ttf_levels
+        )
+
+        self._dists: Dict[pd.Interval, stats.rv_continuous] = {}
+        for ttf_bin, exec_times in self._views.items():
+            *params, loc, scale = dist.fit(exec_times)
+            self._dists[ttf_bin] = dist.freeze(
+                *params,
+                loc=loc,
+                scale=scale,
+            )
+
+        self._distribution = dist
+
+    def get_execution_time(self) -> float:
+        return max(self._dists[self._get_binned_ttf()].rvs(), 0.0)
+
+    def get_model_params(self) -> Dict[str, Any]:
+        params = super(DistExpKernelRollingTTFETModel, self).get_model_params()
+        params["distribution"] = self._distribution.name
+        return params

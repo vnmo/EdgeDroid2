@@ -188,7 +188,6 @@ class TestModels(unittest.TestCase):
             neuro = raw_df.iloc[0]["neuroticism"]
 
             model = EmpiricalExecutionTimeModel(
-                self.data,
                 neuroticism=neuro,
                 state_checks_enabled=False,
                 # transition_fade_distance=self.fade_distance,
@@ -209,7 +208,7 @@ class TestModels(unittest.TestCase):
 
         # just check if setting neuroticism to None causes problems
         for model_cls in (EmpiricalExecutionTimeModel, TheoreticalExecutionTimeModel):
-            model = model_cls.from_default_data(neuroticism=None)
+            model = model_cls(neuroticism=None)
 
             for _ in range(100):
                 model.advance((rng.random() * (10.0 - 0.5)) + 0.5).get_execution_time()

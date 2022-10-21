@@ -13,11 +13,9 @@ class ExperimentConfig(NamedTuple):
 
 experiments: Dict[str, Callable[[], ExperimentConfig]] = {
     "empirical-high-adaptive-power-empirical": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=EmpiricalExecutionTimeModel.from_default_data(
-                neuroticism=None
-            )
+            execution_time_model=EmpiricalExecutionTimeModel(neuroticism=None)
         ),
         metadata={
             "timing_model": "empirical-high",
@@ -26,11 +24,9 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
     ),
     # ---
     "empirical-high-adaptive-power-empirical-low": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=EmpiricalExecutionTimeModel.from_default_data(
-                neuroticism=0.0
-            )
+            execution_time_model=EmpiricalExecutionTimeModel(neuroticism=0.0)
         ),
         metadata={
             "timing_model": "empirical-high",
@@ -39,11 +35,9 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
     ),
     # ---
     "empirical-high-adaptive-power-empirical-high": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=EmpiricalExecutionTimeModel.from_default_data(
-                neuroticism=1.0
-            )
+            execution_time_model=EmpiricalExecutionTimeModel(neuroticism=1.0)
         ),
         metadata={
             "timing_model": "empirical-high",
@@ -52,9 +46,9 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
     ),
     # ---
     "empirical-high-adaptive-power-theoretical-exgaussian": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=TheoreticalExecutionTimeModel.from_default_data(
+            execution_time_model=TheoreticalExecutionTimeModel(
                 neuroticism=None, distribution=stats.exponnorm
             )
         ),
@@ -65,9 +59,9 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
     ),
     # ---
     "empirical-high-adaptive-power-theoretical-exgaussian-low": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=TheoreticalExecutionTimeModel.from_default_data(
+            execution_time_model=TheoreticalExecutionTimeModel(
                 neuroticism=0.0, distribution=stats.exponnorm
             )
         ),
@@ -78,9 +72,9 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
     ),
     # ---
     "empirical-high-adaptive-power-theoretical-exgaussian-high": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=TheoreticalExecutionTimeModel.from_default_data(
+            execution_time_model=TheoreticalExecutionTimeModel(
                 neuroticism=1.0, distribution=stats.exponnorm
             )
         ),
@@ -90,10 +84,10 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
         },
     ),
     "empirical-high-adaptive-power-fitted-naive-exgaussian": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=AperiodicPowerFrameSamplingModel.from_default_data(
-            execution_time_model=FittedNaiveExecutionTimeModel.from_default_data(
-                distribution=stats.exponnorm,
+            execution_time_model=FittedNaiveExecutionTimeModel(
+                dist=stats.exponnorm,
             )
         ),
         metadata={
@@ -102,17 +96,17 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
         },
     ),
     "empirical-high-greedy": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=1.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=1.0),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={"timing_model": "empirical-high", "sampling_scheme": "greedy"},
     ),
     "empirical-low-greedy": lambda: ExperimentConfig(
-        timing_model=EmpiricalExecutionTimeModel.from_default_data(neuroticism=0.0),
+        timing_model=EmpiricalExecutionTimeModel(neuroticism=0.0),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={"timing_model": "empirical-low", "sampling_scheme": "greedy"},
     ),
     "theoretical-exgaussian-high-greedy": lambda: ExperimentConfig(
-        timing_model=TheoreticalExecutionTimeModel.from_default_data(
+        timing_model=TheoreticalExecutionTimeModel(
             neuroticism=1.0, distribution=stats.exponnorm
         ),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
@@ -122,7 +116,7 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
         },
     ),
     "theoretical-exgaussian-low-greedy": lambda: ExperimentConfig(
-        timing_model=TheoreticalExecutionTimeModel.from_default_data(
+        timing_model=TheoreticalExecutionTimeModel(
             neuroticism=0.0, distribution=stats.exponnorm
         ),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
@@ -132,9 +126,7 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
         },
     ),
     "fitted-naive-exgaussian-greedy": lambda: ExperimentConfig(
-        timing_model=FittedNaiveExecutionTimeModel.from_default_data(
-            distribution=stats.exponnorm
-        ),
+        timing_model=FittedNaiveExecutionTimeModel(dist=stats.exponnorm),
         sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
         metadata={
             "timing_model": "fitted-naive-exgaussian",
