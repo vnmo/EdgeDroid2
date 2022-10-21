@@ -748,6 +748,9 @@ class DistExpKernelRollingTTFETModel(ExpKernelRollingTTFETModel):
     def get_execution_time(self) -> float:
         return max(self._dists[self._get_binned_ttf()].rvs(), 0.0)
 
+    def get_expected_execution_time(self) -> float:
+        return self._dists[self._get_binned_ttf()].expect()
+
     def get_model_params(self) -> Dict[str, Any]:
         params = super(DistExpKernelRollingTTFETModel, self).get_model_params()
         params["distribution"] = self._distribution.name
