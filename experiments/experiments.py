@@ -133,5 +133,41 @@ experiments: Dict[str, Callable[[], ExperimentConfig]] = {
             "sampling_scheme": "greedy",
         },
     ),
+    "rolling-ttf-low-greedy": lambda: ExperimentConfig(
+        timing_model=ExpKernelRollingTTFETModel(neuroticism=0.0),
+        sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
+        metadata={
+            "timing_model": "rolling-ttf-low",
+            "sampling_scheme": "greedy",
+        },
+    ),
+    "rolling-ttf-high-greedy": lambda: ExperimentConfig(
+        timing_model=ExpKernelRollingTTFETModel(neuroticism=1.0),
+        sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
+        metadata={
+            "timing_model": "rolling-ttf-high",
+            "sampling_scheme": "greedy",
+        },
+    ),
+    "fitted-rolling-ttf-exgaussian-low-greedy": lambda: ExperimentConfig(
+        timing_model=DistExpKernelRollingTTFETModel(
+            neuroticism=0.0, dist=stats.exponnorm
+        ),
+        sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
+        metadata={
+            "timing_model": "fitted-rolling-ttf-exgaussian-low",
+            "sampling_scheme": "greedy",
+        },
+    ),
+    "fitted-rolling-ttf-exgaussian-high-greedy": lambda: ExperimentConfig(
+        timing_model=DistExpKernelRollingTTFETModel(
+            neuroticism=1.0, dist=stats.exponnorm
+        ),
+        sampling_scheme=ZeroWaitFrameSamplingModel.from_default_data(),
+        metadata={
+            "timing_model": "fitted-rolling-ttf-exgaussian-high",
+            "sampling_scheme": "greedy",
+        },
+    ),
 }
 __all__ = ["experiments"]

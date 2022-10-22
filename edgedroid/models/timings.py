@@ -642,8 +642,10 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
 def _convolve_kernel(arr: pd.Series, kernel: npt.NDArray):
     index = arr.index
     arr = arr.to_numpy()
+    arr = np.concatenate([np.zeros(kernel.size) + arr[0], arr])
     lkernel = np.concatenate([np.zeros(kernel.size - 1), kernel / kernel.sum()])
-    return pd.Series(np.convolve(arr, lkernel, "same"), index=index)
+    result = np.convolve(arr, lkernel, "same")
+    return pd.Series(result[kernel.size :], index=index)
 
 
 class ExpKernelRollingTTFETModel(ExecutionTimeModel):
@@ -655,7 +657,12 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
 
         return kernel / kernel.sum()
 
-    def __init__(self, neuroticism: float | None, window: int = 8, ttf_levels: int = 7):
+    def __init__(
+        self,
+        neuroticism: float | None,
+        window: int = 12,
+        ttf_levels: int = 7,
+    ):
 
         data, neuro_bins, *_ = self.get_data()
 
@@ -685,12 +692,17 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
             self._views[binned_rolling_ttf] = df["next_exec_time"].to_numpy()
 
         self._window = np.zeros(window, dtype=float)
+        self._steps = 0
         self._neuroticism = neuroticism
         self._rng = np.random.default_rng()
 
     def advance(self: TTimingModel, ttf: float | int) -> TTimingModel:
-        self._window = np.roll(self._window, shift=1)
-        self._window[0] = ttf
+        if self._steps == 0:
+            self._window[:] = ttf
+            self._steps += 1
+        else:
+            self._window = np.roll(self._window, shift=1)
+            self._window[0] = ttf
         return self
 
     def _get_binned_ttf(self) -> pd.Interval:
@@ -709,11 +721,13 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
             "weights": self._kernel,
             "weighted_ttf": np.multiply(self._window, self._kernel).sum(),
             "neuroticism": self._neuroticism,
+            "steps": self._steps,
         }
 
     def reset(self) -> None:
         self._window = np.zeros(self._window.size, dtype=float)
         self._rng = np.random.default_rng()
+        self._steps = 0
 
     def get_model_params(self) -> Dict[str, Any]:
         return {
