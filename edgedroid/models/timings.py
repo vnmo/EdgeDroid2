@@ -655,15 +655,16 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
 
         return kernel / kernel.sum()
 
-    def __init__(self, neuroticism: float, window: int = 8, ttf_levels: int = 7):
+    def __init__(self, neuroticism: float | None, window: int = 8, ttf_levels: int = 7):
 
         data, neuro_bins, *_ = self.get_data()
 
-        # bin neuroticism
-        data["binned_neuro"] = pd.cut(
-            data["neuroticism"], bins=pd.IntervalIndex(neuro_bins)
-        ).astype(pd.IntervalDtype(float))
-        data = data[data["binned_neuro"].array.contains(neuroticism)].copy()
+        if neuroticism is not None:
+            # bin neuroticism
+            data["binned_neuro"] = pd.cut(
+                data["neuroticism"], bins=pd.IntervalIndex(neuro_bins)
+            ).astype(pd.IntervalDtype(float))
+            data = data[data["binned_neuro"].array.contains(neuroticism)].copy()
 
         data["next_exec_time"] = data["exec_time"].shift(-1)
         data = data.dropna()
@@ -725,7 +726,7 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
 class DistExpKernelRollingTTFETModel(ExpKernelRollingTTFETModel):
     def __init__(
         self,
-        neuroticism: float,
+        neuroticism: float | None,
         dist: stats.rv_continuous = stats.exponnorm,
         window: int = 8,
         ttf_levels: int = 7,
