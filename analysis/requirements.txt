@@ -10,3 +10,4 @@ multiprocess
 dill
 modin[dask]
 scipy
+click
