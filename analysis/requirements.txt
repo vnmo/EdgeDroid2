@@ -11,3 +11,4 @@ dill
 modin[dask]
 scipy
 click
+pingouin
