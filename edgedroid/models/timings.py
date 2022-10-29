@@ -219,6 +219,22 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def get_cdf_at_instant(self, instant: float):
+        """
+        Returns the value of the CDF for the execution time distribution of the
+        current state of the model at the given instant.
+
+        Parameters
+        ----------
+        instant: float
+
+        Returns
+        -------
+        float
+        """
+        pass
+
+    @abc.abstractmethod
     def state_info(self) -> Dict[str, Any]:
         """
         Returns
@@ -286,6 +302,9 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
         # no-op
         pass
 
+    def get_cdf_at_instant(self, instant: float):
+        return float(instant > self._exec_time)
+
 
 class NaiveExecutionTimeModel(ExecutionTimeModel):
     """
@@ -322,6 +341,9 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
     def reset(self) -> None:
         # no-op
         pass
+
+    def get_cdf_at_instant(self, instant: float) -> float:
+        return self._exec_times[self._exec_times < instant].size / self._exec_times.size
 
 
 class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
@@ -363,6 +385,9 @@ class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
     def reset(self) -> None:
         # no-op
         pass
+
+    def get_cdf_at_instant(self, instant: float) -> float:
+        return float(self._dist.cdf(instant))
 
 
 class EmpiricalExecutionTimeModel(ExecutionTimeModel):
@@ -559,6 +584,10 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
                 f"initialization?"
             ) from e
 
+    def get_cdf_at_instant(self, instant: float) -> float:
+        exec_times = self._get_data_for_current_state()
+        return exec_times[exec_times < instant].size / exec_times.size
+
 
 class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     """
@@ -637,6 +666,9 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
 
     def get_expected_execution_time(self) -> float:
         return self._get_dist_for_current_state().expect()
+
+    def get_cdf_at_instant(self, instant: float) -> float:
+        return float(self._get_dist_for_current_state().cdf(instant))
 
 
 def _convolve_kernel(arr: pd.Series, kernel: npt.NDArray):
@@ -736,6 +768,10 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
             "ttf_levels": len(self._ttf_bins),
         }
 
+    def get_cdf_at_instant(self, instant: float) -> float:
+        exec_times = self._views[self._get_binned_ttf()]
+        return exec_times[exec_times < instant].size / exec_times.size
+
 
 class DistExpKernelRollingTTFETModel(ExpKernelRollingTTFETModel):
     def __init__(
@@ -770,3 +806,6 @@ class DistExpKernelRollingTTFETModel(ExpKernelRollingTTFETModel):
         params = super(DistExpKernelRollingTTFETModel, self).get_model_params()
         params["distribution"] = self._distribution.name
         return params
+
+    def get_cdf_at_instant(self, instant: float) -> float:
+        return float(self._dists[self._get_binned_ttf()].cdf(instant))
