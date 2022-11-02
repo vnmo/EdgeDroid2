@@ -219,6 +219,10 @@ class ExecutionTimeModel(Iterator[float], metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
+    def get_mean_execution_time(self) -> float:
+        pass
+
+    @abc.abstractmethod
     def get_cdf_at_instant(self, instant: float):
         """
         Returns the value of the CDF for the execution time distribution of the
@@ -295,6 +299,9 @@ class ConstantExecutionTimeModel(ExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self.get_execution_time()
 
+    def get_mean_execution_time(self) -> float:
+        return self.get_execution_time()
+
     def state_info(self) -> Dict[str, Any]:
         return {}
 
@@ -334,6 +341,9 @@ class NaiveExecutionTimeModel(ExecutionTimeModel):
 
     def get_expected_execution_time(self) -> float:
         return self._exec_times.mean()
+
+    def get_mean_execution_time(self) -> float:
+        return self.get_expected_execution_time()
 
     def state_info(self) -> Dict[str, Any]:
         return {}
@@ -378,6 +388,9 @@ class FittedNaiveExecutionTimeModel(NaiveExecutionTimeModel):
 
     def get_expected_execution_time(self) -> float:
         return self._dist.expect()
+
+    def get_mean_execution_time(self) -> float:
+        return self._dist.mean()
 
     def state_info(self) -> Dict[str, Any]:
         return {}
@@ -561,6 +574,9 @@ class EmpiricalExecutionTimeModel(ExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self._get_data_for_current_state().mean()
 
+    def get_mean_execution_time(self) -> float:
+        return self.get_expected_execution_time()
+
     def state_info(self) -> Dict[str, Any]:
         try:
             binned_duration = self._duration_bins[
@@ -667,6 +683,9 @@ class TheoreticalExecutionTimeModel(EmpiricalExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self._get_dist_for_current_state().expect()
 
+    def get_mean_execution_time(self) -> float:
+        return self._get_dist_for_current_state().mean()
+
     def get_cdf_at_instant(self, instant: float) -> float:
         return float(self._get_dist_for_current_state().cdf(instant))
 
@@ -747,6 +766,9 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
     def get_expected_execution_time(self) -> float:
         return self._views[self._get_binned_ttf()].mean()
 
+    def get_mean_execution_time(self) -> float:
+        return self.get_expected_execution_time()
+
     def state_info(self) -> Dict[str, Any]:
         return {
             "ttf_window": self._window,
@@ -801,6 +823,9 @@ class DistExpKernelRollingTTFETModel(ExpKernelRollingTTFETModel):
 
     def get_expected_execution_time(self) -> float:
         return self._dists[self._get_binned_ttf()].expect()
+
+    def get_mean_execution_time(self) -> float:
+        return self._dists[self._get_binned_ttf()].mean()
 
     def get_model_params(self) -> Dict[str, Any]:
         params = super(DistExpKernelRollingTTFETModel, self).get_model_params()
