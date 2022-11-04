@@ -717,13 +717,6 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
 
         data, neuro_bins, *_ = self.get_data()
 
-        if neuroticism is not None:
-            # bin neuroticism
-            data["binned_neuro"] = pd.cut(
-                data["neuroticism"], bins=pd.IntervalIndex(neuro_bins)
-            ).astype(pd.IntervalDtype(float))
-            data = data[data["binned_neuro"].array.contains(neuroticism)].copy()
-
         data["next_exec_time"] = data["exec_time"].shift(-1)
         data = data.dropna()
 
@@ -736,6 +729,13 @@ class ExpKernelRollingTTFETModel(ExecutionTimeModel):
         ttf_bins[0], ttf_bins[-1] = -np.inf, np.inf
         self._ttf_bins = pd.IntervalIndex.from_breaks(ttf_bins, closed="right")
         data["binned_rolling_ttf"] = pd.cut(data["rolling_ttf"], bins=self._ttf_bins)
+
+        if neuroticism is not None:
+            # bin neuroticism
+            data["binned_neuro"] = pd.cut(
+                data["neuroticism"], bins=pd.IntervalIndex(neuro_bins)
+            ).astype(pd.IntervalDtype(float))
+            data = data[data["binned_neuro"].array.contains(neuroticism)].copy()
 
         # prepare views
         self._views: Dict[pd.Interval, npt.NDArray] = {}
