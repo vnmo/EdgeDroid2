@@ -33,6 +33,10 @@ class ConstantRTTSampler(abc.ABC):
         self._P0 = P0
         self._Pc = Pc
 
+    @abc.abstractmethod
+    def reset(self):
+        pass
+
     def calculate_energy(
             self,
             duration: float,
@@ -72,6 +76,9 @@ class IdealConstantRTTSampler(ConstantRTTSampler):
     def _sample_step(self, prev_ttf: float, execution_time: float) -> SamplingResults:
         return SamplingResults(execution_time, 1)
 
+    def reset(self):
+        pass
+
 
 class GreedyConstantRTTSampler(ConstantRTTSampler):
     def _sample_step(self, prev_ttf: float, execution_time: float) -> SamplingResults:
@@ -83,6 +90,9 @@ class GreedyConstantRTTSampler(ConstantRTTSampler):
             samples += 1
 
         return SamplingResults(instant, samples)
+
+    def reset(self):
+        pass
 
 
 class JunjuesConstantRTTSampler(ConstantRTTSampler):
@@ -103,6 +113,9 @@ class JunjuesConstantRTTSampler(ConstantRTTSampler):
         self._sr_max = 1 / self._rtt
         self._sr_diff = self._sr_max - self._sr_min
         self._alpha = alpha
+
+    def reset(self):
+        self._estimator.reset()
 
     def _sample_step(self, prev_ttf: float, execution_time: float) -> SamplingResults:
         self._estimator.advance(prev_ttf)
@@ -137,6 +150,9 @@ class BaseOptimumSampler(ConstantRTTSampler, metaclass=abc.ABCMeta):
     ):
         super(BaseOptimumSampler, self).__init__(t_net, t_proc, P0, Pc)
         self._estimator = estimator
+        self._estimator.reset()
+
+    def reset(self):
         self._estimator.reset()
 
     @abc.abstractmethod
