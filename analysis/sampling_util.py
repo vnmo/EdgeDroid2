@@ -111,7 +111,7 @@ class JunjuesConstantRTTSampler(ConstantRTTSampler):
         self._estimator.reset()
         self._sr_min = min_sr
         self._sr_max = 1 / self._rtt
-        self._sr_diff = self._sr_max - self._sr_min
+        self._sr_diff = max(self._sr_max - self._sr_min, 0.0)
         self._alpha = alpha
 
     def reset(self):
@@ -133,7 +133,7 @@ class JunjuesConstantRTTSampler(ConstantRTTSampler):
                 self._sr_max,
             )
 
-            instant += 1 / sr
+            instant += max(1 / sr, self._rtt)
             samples += 1
 
         return SamplingResults(instant, samples)
