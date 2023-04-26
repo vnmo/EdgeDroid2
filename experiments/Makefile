@@ -1,6 +1,7 @@
 #BUILD_CMD = docker buildx build --push --platform linux/arm64,linux/amd64
-BUILD_CMD = docker buildx build --platform linux/arm64
-DOCKER_USER = molguin
+BUILD_CMD = docker buildx build --push --platform linux/arm64
+#BUILD_CMD = docker buildx build --platform linux/arm64
+DOCKER_USER = vnmo
 IMG_REPO = $(DOCKER_USER)/edgedroid2
 
 all: edgedroid-experiment-server edgedroid-experiment-client
