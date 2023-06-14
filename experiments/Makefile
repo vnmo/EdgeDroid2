@@ -3,7 +3,7 @@
 BUILD_CMD = docker buildx build --push --platform linux/amd64
 DOCKER_USER = vnmo
 IMG_REPO = $(DOCKER_USER)/edgedroid2
--
+
 all: edgedroid-experiment-server edgedroid-experiment-client
 .PHONY: all
 
