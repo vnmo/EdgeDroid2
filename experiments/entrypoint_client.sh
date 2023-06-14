@@ -2,7 +2,7 @@
 
 python3 ./experiment_client.py
 
-#  $EDGEDROID_CLIENT_HOST              130.229.163.156
+#  $EDGEDROID_CLIENT_HOST              <serverIP>
 #  $EDGEDROID_CLIENT_PORT              50000
 #  $EDGEDROID_CLIENT_TRACE             test
 #  $EDGEDROID_CLIENT_EXPERIMENT_ID     empirical-high-adaptive-power-empirical
