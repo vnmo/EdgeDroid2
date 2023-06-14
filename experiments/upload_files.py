@@ -8,13 +8,13 @@ import sys
 # reference: https://docs.openstack.org/python-swiftclient/latest/client-api.html
 #
 # environment variables must be set for authentication like this in openstack horizon:
-# AUTH_SERVER=10.0.87.254,AUTH_PROJECT_NAME=openstack,AUTH_USERNAME=admin,AUTH_PASSWORD=password
+# AUTH_SERVER=https://testbed.expeca.proj.kth.se,AUTH_PROJECT_NAME=edgedroid,AUTH_USERNAME=vishnu,AUTH_PASSWORD=Iniest@8
 #
 # environment varialbes set at terminal:
-# export AUTH_SERVER=10.0.87.254; export AUTH_PROJECT_NAME=openstack; export AUTH_USERNAME=admin; export AUTH_PASSWORD=password;
+# export AUTH_SERVER=130.237.11.99; export AUTH_PROJECT_NAME=edgedroid; export AUTH_USERNAME=vishnu; export AUTH_PASSWORD=Iniest@8;
 #
 # example
-# python3 upload_files.py /tmp/results/irtt_data.json students-project
+# python3 upload_files.py ./requirements.txt EdgedroidVol
 
 def main():
     args_num = len(sys.argv)
@@ -48,10 +48,10 @@ def main():
         print("no auth password is in environment variables")
         return 0
 
-    print(f'Contacting http://{auth_server}:5000/v3/ ...')
+    print(f'Contacting https://{auth_server}:5000/v3/ ...')
 
     # Create a password auth plugin
-    auth = v3.Password(auth_url=f'http://{auth_server}:5000/v3/',
+    auth = v3.Password(auth_url=f'https://{auth_server}:5000/v3/',
                        username=auth_username,
                        password=auth_password,
                        user_domain_name='Default',
