@@ -11,10 +11,8 @@ import sys
 # AUTH_SERVER=https://testbed.expeca.proj.kth.se,AUTH_PROJECT_NAME=edgedroid,AUTH_USERNAME=vishnu,AUTH_PASSWORD=Iniest@8
 #
 # environment varialbes set at terminal:
-# export AUTH_SERVER=130.237.11.99; export AUTH_PROJECT_NAME=edgedroid; export AUTH_USERNAME=vishnu; export AUTH_PASSWORD=Iniest@8;
 #
 # example
-# python3 upload_files.py ./requirements.txt EdgedroidVol
 
 def main():
     args_num = len(sys.argv)
